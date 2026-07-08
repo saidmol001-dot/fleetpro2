@@ -209,7 +209,7 @@
         <div class="error" id="loginError">Identifiants incorrects</div>
         <button type="submit" class="btn-login">Se connecter</button>
       </form>
-      <p style="margin-top:16px;font-size:11px;color:#9ca3af;text-align:center;">admin@fleetpro.com / admin123 · agent@fleetpro.com / agent123</p>
+      <p style="margin-top:16px;font-size:11px;color:#9ca3af;text-align:center;"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a2c3c6cfcbcce2c4cec7c7d6d2d0cd8cc1cdcf">[email&#160;protected]</a> / admin123 · <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a6c7c1c3c8d2e6c0cac3c3d2d6d4c988c5c9cb">[email&#160;protected]</a> / agent123</p>
     </div>
   </div>
 
@@ -375,7 +375,7 @@
 
   <div id="toastContainer"></div>
 
-  <script>
+  <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
     // ======================================================================
     // 1. CONFIGURATION SUPABASE
     // ======================================================================
@@ -620,6 +620,15 @@
       selectedWeek = week;
       document.getElementById('weekSelector').value = week;
       document.getElementById('syncWeekLabel').textContent = week.toUpperCase();
+      // Auto-sync le mois avec la date du lundi
+      const newMonth = mon.getMonth() + 1;
+      const newYear = mon.getFullYear();
+      if (newMonth !== currentMonth || newYear !== currentYear) {
+        currentMonth = newMonth;
+        currentYear = newYear;
+        updateMonth();
+        loadData();
+      }
       syncToCumul();
       renderPlanning();
     }
@@ -1567,5 +1576,5 @@
       document.getElementById('loginOverlay').classList.remove('hidden');
     }
   </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a181bbbc48a7ad2e',t:'MTc4MzU0MTQzNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
