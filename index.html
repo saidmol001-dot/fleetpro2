@@ -115,6 +115,8 @@
     .week-select { background: #e0f2fe; border-color: #0ea5e9 !important; color: #0369a1; }
     .planning-select { width: 44px; height: 32px; text-align: center; border: 2px solid #e5e7eb; border-radius: 5px; font-size: 13px; font-weight: 800; cursor: pointer; appearance: none; }
     .planning-select.disabled { background: #f9fafb !important; pointer-events: none; opacity: 0.8; }
+    .planning-select.out-of-month { background: #d1d5db !important; color: #9ca3af !important; pointer-events: none; opacity: 0.45; }
+    th.out-of-month { color: #d1d5db !important; opacity: 0.5; }
     .jours-cell { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-weight: 800; color: #fff; font-size: 13px; }
     .jours-red { background: #ef4444; }
     .jours-orange { background: #f97316; }
@@ -209,7 +211,7 @@
         <div class="error" id="loginError">Identifiants incorrects</div>
         <button type="submit" class="btn-login">Se connecter</button>
       </form>
-      <p style="margin-top:16px;font-size:11px;color:#9ca3af;text-align:center;"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a2c3c6cfcbcce2c4cec7c7d6d2d0cd8cc1cdcf">[email&#160;protected]</a> / admin123 · <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a6c7c1c3c8d2e6c0cac3c3d2d6d4c988c5c9cb">[email&#160;protected]</a> / agent123</p>
+      <p style="margin-top:16px;font-size:11px;color:#9ca3af;text-align:center;"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="3150555c585f71575d54544541435e1f525e5c">[email&#160;protected]</a> / admin123 · <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="d8b9bfbdb6ac98beb4bdbdaca8aab7f6bbb7b5">[email&#160;protected]</a> / agent123</p>
     </div>
   </div>
 
@@ -396,6 +398,7 @@
     let currentYear = new Date().getFullYear();
     let currentMonth = new Date().getMonth() + 1;
     let selectedWeek = 's1';
+    let weekMondays = {}; // { s1:'2026-07-01', s2:'2026-07-08', ... } stocke le lundi de chaque semaine du mois
 
     let currentUser = null;
     let isAdmin = false;
@@ -433,6 +436,58 @@
         return v.toString(16);
       });
     };
+
+    // --- Fonctions des semaines du mois ---
+    function getWeeksOfMonth(year, month) {
+      const weeks = {};
+      const weekStarts = [1, 8, 15, 22, 29];
+      const daysInMonth = new Date(year, month, 0).getDate();
+      ['s1','s2','s3','s4','s5'].forEach((wk, i) => {
+        const startDay = weekStarts[i];
+        if (startDay > daysInMonth) { weeks[wk] = null; return; }
+        const d = new Date(year, month - 1, startDay);
+        const dow = d.getDay(); // 0=Dim
+        const mon = new Date(d);
+        mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+        const y = mon.getFullYear(), mo = String(mon.getMonth()+1).padStart(2,'0'), dd = String(mon.getDate()).padStart(2,'0');
+        weeks[wk] = `${y}-${mo}-${dd}`;
+      });
+      return weeks;
+    }
+    function getCurrentWeekOfMonth(year, month) {
+      const today = new Date();
+      if (today.getFullYear() !== year || today.getMonth() + 1 !== month) return 's1';
+      const dom = today.getDate();
+      const dim = new Date(year, month, 0).getDate();
+      if (dom <= 7) return 's1';
+      if (dom <= 14) return 's2';
+      if (dom <= 21) return 's3';
+      if (dom <= 28) return 's4';
+      if (dom <= dim) return 's5';
+      return 's1';
+    }
+    function resetWeekToMonth() {
+      weekMondays = getWeeksOfMonth(currentYear, currentMonth);
+      const curWk = getCurrentWeekOfMonth(currentYear, currentMonth);
+      let wk = curWk;
+      if (!weekMondays[wk]) {
+        for (const w of ['s5','s4','s3','s2','s1']) { if (weekMondays[w]) { wk = w; break; } }
+      }
+      selectedWeek = wk;
+      document.getElementById('weekSelector').value = wk;
+      document.getElementById('syncWeekLabel').textContent = wk.toUpperCase();
+      if (weekMondays[wk]) {
+        document.getElementById('mondayDate').value = weekMondays[wk];
+      }
+      updateMonth();
+      updateDates();
+    }
+    function isDayInCurrentMonth(dateStr) {
+      if (!dateStr) return true;
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
+    }
+    // --- Fin fonctions semaines du mois ---
 
     // ======================================================================
     // 4. TOASTS
@@ -608,15 +663,39 @@
     function updateDates() {
       const m = document.getElementById('mondayDate').value;
       if(!m) return;
-      const mon = new Date(m);
+      const mon = new Date(m + 'T00:00:00');
+      // Recalculer les semaines du mois courant
+      weekMondays = getWeeksOfMonth(currentYear, currentMonth);
+      // Mettre à jour les en-têtes de colonnes avec grisage hors mois
       ['thLun','thMar','thMer','thJeu','thVen','thSam','thDim'].forEach((id,i) => {
         const d = new Date(mon); d.setDate(mon.getDate()+i);
-        document.getElementById(id).innerHTML = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][i]+'<br><small>'+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'</small>';
+        const inMonth = (d.getMonth()+1 === currentMonth && d.getFullYear() === currentYear);
+        const el = document.getElementById(id);
+        el.innerHTML = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][i]+'<br><small>'+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'</small>';
+        el.className = inMonth ? '' : 'out-of-month';
       });
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
       document.getElementById('planningWeekTitle').textContent = `${mon.getDate()}/${mon.getMonth()+1} - ${sun.getDate()}/${sun.getMonth()+1}`;
+      // Déterminer la semaine à partir du début du mois (1er=S1, 8=S2, 15=S3, 22=S4, 29=S5)
       const dom = mon.getDate();
-      const week = dom<=7?'s1':dom<=14?'s2':dom<=21?'s3':dom<=28?'s4':'s5';
+      const mom = mon.getMonth()+1;
+      const yom = mon.getFullYear();
+      // Comparer au 1er du mois courant : quelle semaine du mois contient ce lundi ?
+      let week = 's1';
+      if (mom === currentMonth && yom === currentYear) {
+        // Le lundi est dans le mois courant, déterminer S1-S5 selon le début de mois
+        const joursDepuisDebut = dom;
+        if (joursDepuisDebut <= 7) week = 's1';
+        else if (joursDepuisDebut <= 14) week = 's2';
+        else if (joursDepuisDebut <= 21) week = 's3';
+        else if (joursDepuisDebut <= 28) week = 's4';
+        else week = 's5';
+      } else {
+        // Lundi dans un autre mois — chercher la semaine correspondante
+        for (const [wk, wm] of Object.entries(weekMondays)) {
+          if (wm && wm === m) { week = wk; break; }
+        }
+      }
       selectedWeek = week;
       document.getElementById('weekSelector').value = week;
       document.getElementById('syncWeekLabel').textContent = week.toUpperCase();
@@ -628,6 +707,7 @@
         currentYear = newYear;
         updateMonth();
         loadData();
+        return; // loadData appelle renderAll qui appelle renderPlanning
       }
       syncToCumul();
       renderPlanning();
@@ -1150,16 +1230,39 @@
       ensureMinimumRows();
       const dataPlanning = planningByWeek[selectedWeek];
       const days = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+      const monDate = document.getElementById('mondayDate').value;
+      const mondayRef = monDate ? new Date(monDate + 'T00:00:00') : null;
       document.getElementById('planningBody').innerHTML = dataPlanning.map((r,i) => {
         const j = countJ(r), sal = j*(r.taux_journalier||0), act = r.nom.trim()!=='';
-        return `<tr style="${!act?'opacity:.5':''}"><td class="text-left"><small style="color:#9ca3af">${i+1}.</small><input type="text" list="agentsList" class="nom-input ${editMode?'':'disabled'}" value="${r.nom}" placeholder="Agent..." data-pi="${i}" data-pf="nom" ${editMode?'':'disabled'}></td>${days.map(d => `<td><select class="planning-select ${editMode?'':'disabled'}" style="background:${getColor(r[d])};color:${getTextColor(r[d])}" data-pi="${i}" data-pf="${d}" ${editMode?'':'disabled'}><option value="" ${!r[d]?'selected':''}>—</option><option value="M" ${r[d]==='M'?'selected':''}>M</option><option value="S" ${r[d]==='S'?'selected':''}>S</option><option value="T" ${r[d]==='T'?'selected':''}>T</option><option value="X" ${r[d]==='X'?'selected':''}>X</option></select></td>`).join('')}<td><input type="number" class="cell-input ${editMode?'':'disabled'}" style="width:45px" value="${r.taux_journalier||''}" data-pi="${i}" data-pf="taux_journalier" ${editMode?'':'disabled'}></td><td><span class="jours-cell ${getJClass(j)}">${j}</span></td><td class="ca-cell">${fmt(sal)}</td><td><button class="btn btn-danger ${editMode?'':'hidden'}" style="padding:2px 5px;font-size:9px" onclick="rmAgent2(${i})">✕</button></td></tr>`;
+        return `<tr style="${!act?'opacity:.5':''}"><td class="text-left"><small style="color:#9ca3af">${i+1}.</small><input type="text" list="agentsList" class="nom-input ${editMode?'':'disabled'}" value="${r.nom}" placeholder="Agent..." data-pi="${i}" data-pf="nom" ${editMode?'':'disabled'}></td>${days.map((d, di) => {
+          let inMonth = true;
+          if (mondayRef) {
+            const dayDate = new Date(mondayRef); dayDate.setDate(mondayRef.getDate() + di);
+            inMonth = (dayDate.getMonth()+1 === currentMonth && dayDate.getFullYear() === currentYear);
+          }
+          const disClass = (!editMode || !inMonth) ? 'disabled' : '';
+          const oomClass = !inMonth ? 'out-of-month' : '';
+          const isDisabled = (!editMode || !inMonth);
+          return `<td><select class="planning-select ${disClass} ${oomClass}" style="${inMonth ? 'background:'+getColor(r[d])+';color:'+getTextColor(r[d]) : 'background:#d1d5db;color:#9ca3af'}" data-pi="${i}" data-pf="${d}" ${isDisabled?'disabled':''}><option value="" ${!r[d]?'selected':''}>—</option><option value="M" ${r[d]==='M'?'selected':''}>M</option><option value="S" ${r[d]==='S'?'selected':''}>S</option><option value="T" ${r[d]==='T'?'selected':''}>T</option><option value="X" ${r[d]==='X'?'selected':''}>X</option></select></td>`;
+        }).join('')}<td><input type="number" class="cell-input ${editMode?'':'disabled'}" style="width:45px" value="${r.taux_journalier||''}" data-pi="${i}" data-pf="taux_journalier" ${editMode?'':'disabled'}></td><td><span class="jours-cell ${getJClass(j)}">${j}</span></td><td class="ca-cell">${fmt(sal)}</td><td><button class="btn btn-danger ${editMode?'':'hidden'}" style="padding:2px 5px;font-size:9px" onclick="rmAgent2(${i})">✕</button></td></tr>`;
       }).join('');
       calcPlanningTotals();
       attachPlanningEv();
     }
 
-    function countJ(r) {
-      return ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].filter(d => ['M','S','T'].includes((r[d]||'').toUpperCase())).length;
+    function countJ(r, weekMondayStr) {
+      // Si pas de lundi fourni, utiliser la date affichée
+      if (!weekMondayStr) weekMondayStr = document.getElementById('mondayDate').value;
+      const monday = weekMondayStr ? new Date(weekMondayStr + 'T00:00:00') : null;
+      return ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].filter((d, di) => {
+        if (!['M','S','T'].includes((r[d]||'').toUpperCase())) return false;
+        if (monday) {
+          const day = new Date(monday); day.setDate(monday.getDate() + di);
+          // Ne compter que si dans le mois courant
+          if (day.getMonth() + 1 !== currentMonth || day.getFullYear() !== currentYear) return false;
+        }
+        return true;
+      }).length;
     }
     function getJClass(j) { return j<=1?'jours-red':j===2?'jours-orange':'jours-green'; }
     function getColor(v) {
@@ -1177,11 +1280,18 @@
 
     function calcPlanningTotals() {
       const dataPlanning = planningByWeek[selectedWeek];
+      const wm = weekMondays[selectedWeek] || document.getElementById('mondayDate').value;
       const act = dataPlanning.filter(r => r.nom.trim());
-      const tj = act.reduce((s,r) => s + countJ(r), 0);
-      const ts = act.reduce((s,r) => s + countJ(r)*(r.taux_journalier||0), 0);
-      document.getElementById('planningFoot').innerHTML = `<tr><td class="text-left"><b>TOTAUX (${act.length})</b></td>${['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].map(d => `<td>${act.filter(r => ['M','S','T'].includes((r[d]||'').toUpperCase())).length}</td>`).join('')}<td></td><td><b>${tj}</b></td><td><b>${fmt(ts)}</b></td><td></td></tr>`;
-      document.getElementById('planningKpis').innerHTML = `<div class="kpi-card cyan"><div class="label">Salaires ${selectedWeek.toUpperCase()}</div><div class="value">${fmt(ts)}</div></div><div class="kpi-card gray"><div class="label">Jours</div><div class="value">${tj}</div></div><div class="kpi-card gray"><div class="label">Agents</div><div class="value">${act.length}</div></div>`;
+      const tj = act.reduce((s,r) => s + countJ(r, wm), 0);
+      const ts = act.reduce((s,r) => s + countJ(r, wm)*(r.taux_journalier||0), 0);
+      const mondayRef = wm ? new Date(wm + 'T00:00:00') : null;
+      document.getElementById('planningFoot').innerHTML = `<tr><td class="text-left"><b>TOTAUX (${act.length})</b></td>${['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].map((d, di) => {
+        let inMonth = true;
+        if (mondayRef) { const dd = new Date(mondayRef); dd.setDate(mondayRef.getDate()+di); inMonth = (dd.getMonth()+1===currentMonth && dd.getFullYear()===currentYear); }
+        if (!inMonth) return '<td style="color:#d1d5db">—</td>';
+        return `<td>${act.filter(r => ['M','S','T'].includes((r[d]||'').toUpperCase())).length}</td>`;
+      }).join('')}<td></td><td><b>${tj}</b></td><td><b>${fmt(ts)}</b></td><td></td></tr>`;
+      document.getElementById('planningKpis').innerHTML = `<div class="kpi-card cyan"><div class="label">Salaires ${selectedWeek.toUpperCase()}</div><div class="value">${fmt(ts)}</div></div><div class="kpi-card gray"><div class="label">Jours (dans le mois)</div><div class="value">${tj}</div></div><div class="kpi-card gray"><div class="label">Agents</div><div class="value">${act.length}</div></div>`;
     }
 
     function attachPlanningEv() {
@@ -1236,11 +1346,12 @@
     // ===== CUMUL =====
     function syncToCumul() {
       ['s1','s2','s3','s4','s5'].forEach(week => {
+        const wm = weekMondays[week] || null;
         planningByWeek[week].forEach((r, i) => {
           if (dataCumul[i]) {
             if (r.nom.trim()) dataCumul[i].nom = r.nom;
             dataCumul[i].taux_journalier = r.taux_journalier ?? dataCumul[i].taux_journalier;
-            dataCumul[i][week] = r.nom.trim() ? countJ(r) : 0;
+            dataCumul[i][week] = r.nom.trim() ? countJ(r, wm) : 0;
           }
         });
       });
@@ -1483,28 +1594,37 @@
     document.getElementById('btnSave').onclick = () => { clearTimeout(autoSaveTimer); saveData(false); };
     document.getElementById('btnEditToggle').onclick = toggleEditMode;
 
-    document.getElementById('prevMonth').onclick = () => { currentMonth--; if(currentMonth<1){currentMonth=12;currentYear--;} updateMonth(); loadData(); };
-    document.getElementById('nextMonth').onclick = () => { currentMonth++; if(currentMonth>12){currentMonth=1;currentYear++;} updateMonth(); loadData(); };
+    document.getElementById('prevMonth').onclick = async () => { currentMonth--; if(currentMonth<1){currentMonth=12;currentYear--;} updateMonth(); weekMondays = getWeeksOfMonth(currentYear, currentMonth); resetWeekToMonth(); await loadData(); };
+    document.getElementById('nextMonth').onclick = async () => { currentMonth++; if(currentMonth>12){currentMonth=1;currentYear++;} updateMonth(); weekMondays = getWeeksOfMonth(currentYear, currentMonth); resetWeekToMonth(); await loadData(); };
 
     document.getElementById('weekSelector').onchange = e => {
       selectedWeek = e.target.value;
       document.getElementById('syncWeekLabel').textContent = selectedWeek.toUpperCase();
+      // Mettre à jour la date du lundi selon la semaine du mois
+      if (weekMondays[selectedWeek]) {
+        document.getElementById('mondayDate').value = weekMondays[selectedWeek];
+        updateDates();
+      }
       ensureMinimumRows();
       renderPlanning();
       syncToCumul();
     };
 
     document.getElementById('mondayDate').onchange = e => {
-      const d = new Date(e.target.value);
+      const d = new Date(e.target.value + 'T00:00:00');
       const day = d.getDay();
-      if(day!==1) { d.setDate(d.getDate()+(day===0?-6:1-day)); e.target.value=d.toISOString().split('T')[0]; }
+      if(day!==1) { d.setDate(d.getDate()+(day===0?-6:1-day)); e.target.value = d.toISOString().split('T')[0]; }
+      // Si la date n'est pas dans le mois affiché, changer de mois
+      const dMonth = d.getMonth()+1, dYear = d.getFullYear();
+      if (dMonth !== currentMonth || dYear !== currentYear) {
+        currentMonth = dMonth;
+        currentYear = dYear;
+        updateMonth();
+        weekMondays = getWeeksOfMonth(currentYear, currentMonth);
+        loadData().then(() => { updateDates(); });
+        return;
+      }
       updateDates();
-      const dom = d.getDate();
-      selectedWeek = dom<=7?'s1':dom<=14?'s2':dom<=21?'s3':dom<=28?'s4':'s5';
-      document.getElementById('weekSelector').value = selectedWeek;
-      document.getElementById('syncWeekLabel').textContent = selectedWeek.toUpperCase();
-      syncToCumul();
-      renderPlanning();
     };
 
     // ======================================================================
@@ -1553,8 +1673,8 @@
       applyRoleVisibility();
 
       updateMonth();
-      setMondayDate(getCurrentMonday());
-      updateDates();
+      weekMondays = getWeeksOfMonth(currentYear, currentMonth);
+      resetWeekToMonth();
 
       loadData();
 
@@ -1576,5 +1696,5 @@
       document.getElementById('loginOverlay').classList.remove('hidden');
     }
   </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a181bbbc48a7ad2e',t:'MTc4MzU0MTQzNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a181dc8a681e45bc',t:'MTc4MzU0Mjc4MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
