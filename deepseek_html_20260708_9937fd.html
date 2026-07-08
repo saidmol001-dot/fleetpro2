@@ -1,0 +1,1571 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FleetPro SaaS - Gestion de Flotte</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    /* ===== RESET & BASE ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #f3f4f6; display: flex; min-height: 100vh; }
+
+    /* ===== LOGIN OVERLAY ===== */
+    #loginOverlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center; z-index: 9999;
+    }
+    #loginOverlay.hidden { display: none; }
+    .login-box {
+      background: #fff; padding: 40px 30px; border-radius: 20px; width: 100%; max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .login-box h1 { font-size: 24px; font-weight: 800; color: #10b981; text-align: center; margin-bottom: 4px; }
+    .login-box p.sub { text-align: center; color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+    .login-box label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+    .login-box input { width: 100%; padding: 10px 14px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 14px; margin-bottom: 16px; }
+    .login-box input:focus { outline: none; border-color: #10b981; }
+    .login-box .btn-login { width: 100%; padding: 12px; background: #10b981; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; }
+    .login-box .btn-login:hover { background: #059669; }
+    .login-box .error { color: #ef4444; font-size: 13px; margin-top: -8px; margin-bottom: 12px; display: none; }
+
+    /* ===== SIDEBAR ===== */
+    .sidebar { width: 240px; background: #111827; position: fixed; top: 0; left: 0; height: 100vh; display: flex; flex-direction: column; z-index: 100; transition: transform 0.3s ease; }
+    .sidebar-header { padding: 20px; border-bottom: 1px solid #374151; }
+    .sidebar-header h1 { font-size: 18px; font-weight: 800; color: #10b981; }
+    .sidebar-header p { font-size: 10px; color: #6b7280; margin-top: 4px; }
+    .sidebar-nav { flex: 1; padding: 12px; overflow-y: auto; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; color: #9ca3af; cursor: pointer; border-radius: 8px; margin-bottom: 4px; font-size: 13px; font-weight: 500; border: none; background: none; width: 100%; text-align: left; transition: all .2s; }
+    .nav-item:hover { background: #1f2937; color: #f3f4f6; }
+    .nav-item.active { background: #10b981; color: #fff; }
+    .nav-item.hidden { display: none; }
+    .sidebar-footer { padding: 12px; border-top: 1px solid #374151; }
+    .btn-logout { width: 100%; padding: 8px; background: #ef4444; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; }
+
+    /* ===== MAIN ===== */
+    .main { flex: 1; margin-left: 240px; min-height: 100vh; }
+    .header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 20px; position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .month-selector { display: flex; align-items: center; gap: 8px; }
+    .month-selector button { width: 32px; height: 32px; border-radius: 6px; border: none; background: #f3f4f6; cursor: pointer; font-size: 16px; font-weight: bold; color: #6b7280; }
+    .month-selector button:hover { background: #e5e7eb; }
+    .month-display { padding: 8px 16px; background: #f9fafb; border-radius: 6px; font-weight: 700; color: #374151; min-width: 160px; text-align: center; font-size: 14px; }
+    .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .btn-edit-toggle {
+      padding: 8px 16px; border-radius: 10px; border: 2px solid #d1d5db; background: #fff;
+      font-weight: 700; font-size: 13px; cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-edit-toggle.active { background: #10b981; color: #fff; border-color: #10b981; }
+    .btn-edit-toggle:not(.active) { background: #f3f4f6; color: #6b7280; border-color: #9ca3af; }
+    .btn-save { display: flex; align-items: center; gap: 6px; padding: 8px 20px; background: #10b981; color: #fff; border: none; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 12px rgba(16,185,129,.3); }
+    .btn-save:hover { background: #059669; }
+    .btn-save:disabled { background: #9ca3af; cursor: not-allowed; }
+    .btn-export-excel { padding: 8px 16px; background: #217346; color: #fff; border: none; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .btn-export-excel:hover { background: #1a5e38; }
+    .autosave-badge { font-size: 11px; color: #6b7280; display: flex; align-items: center; gap: 4px; }
+    .autosave-badge.saving { color: #f59e0b; }
+    .autosave-badge.saved { color: #10b981; }
+
+    /* ===== CONTENT ===== */
+    .content { padding: 20px; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .card { background: #fff; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.05); overflow: hidden; margin-bottom: 16px; }
+    .card-header { padding: 14px 18px; border-bottom: 1px solid #f3f4f6; }
+    .card-header h2 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .card-body { padding: 16px; }
+
+    /* ===== KPI ===== */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .kpi-card { padding: 16px; border-radius: 12px; color: #fff; }
+    .kpi-card.green { background: linear-gradient(135deg,#10b981,#059669); }
+    .kpi-card.red { background: linear-gradient(135deg,#ef4444,#dc2626); }
+    .kpi-card.blue { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+    .kpi-card.purple { background: linear-gradient(135deg,#8b5cf6,#7c3aed); }
+    .kpi-card.orange { background: linear-gradient(135deg,#f97316,#ea580c); }
+    .kpi-card.cyan { background: linear-gradient(135deg,#06b6d4,#0891b2); }
+    .kpi-card.gray { background: linear-gradient(135deg,#6b7280,#4b5563); }
+    .kpi-card .label { font-size: 11px; opacity: .9; }
+    .kpi-card .value { font-size: 20px; font-weight: 800; margin-top: 4px; }
+
+    /* ===== TABLE ===== */
+    .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; max-height: 70vh; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #f9fafb; padding: 10px 6px; text-align: center; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
+    .table-container table thead th { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 0 #e5e7eb; }
+    .table-container tfoot td { position: sticky; bottom: 0; z-index: 5; }
+    td { padding: 4px; text-align: center; border-bottom: 1px solid #f3f4f6; }
+    tbody tr:hover { background: #f9fafb; }
+    tfoot td { padding: 10px 6px; font-weight: 700; background: #f0fdf4; border-top: 2px solid #10b981; color: #065f46; }
+    .cell-input { width: 50px; padding: 5px 3px; text-align: center; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 12px; font-weight: 500; }
+    .cell-input:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,.15); }
+    .cell-input.disabled { background: #f9fafb; border-color: #e5e7eb; pointer-events: none; color: #6b7280; }
+    .ca-cell { font-weight: 700; color: #059669; font-size: 11px; }
+    .text-left { text-align: left !important; padding-left: 10px !important; }
+    .text-right { text-align: right !important; padding-right: 10px !important; }
+
+    /* ===== PLANNING ===== */
+    .planning-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; padding: 12px; background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; }
+    .planning-controls label { font-size: 12px; font-weight: 600; color: #6b7280; }
+    .planning-controls select, .planning-controls input[type="date"] { padding: 6px 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 13px; font-weight: 600; }
+    .week-select { background: #e0f2fe; border-color: #0ea5e9 !important; color: #0369a1; }
+    .planning-select { width: 44px; height: 32px; text-align: center; border: 2px solid #e5e7eb; border-radius: 5px; font-size: 13px; font-weight: 800; cursor: pointer; appearance: none; }
+    .planning-select.disabled { background: #f9fafb !important; pointer-events: none; opacity: 0.8; }
+    .jours-cell { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-weight: 800; color: #fff; font-size: 13px; }
+    .jours-red { background: #ef4444; }
+    .jours-orange { background: #f97316; }
+    .jours-green { background: #22c55e; }
+    .cumul-cell { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; padding: 6px; border-radius: 6px; font-weight: 700; font-size: 13px; }
+    .cumul-header { padding: 14px 16px; background: linear-gradient(135deg,#6366f1,#4f46e5); color: #fff; }
+    .nom-input { width: 100%; min-width: 120px; padding: 5px 6px; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 12px; font-weight: 500; }
+    .nom-input:focus { outline: none; border-color: #06b6d4; }
+    .nom-input.disabled { background: #f9fafb; pointer-events: none; color: #6b7280; }
+    .margin-bar { height: 6px; border-radius: 3px; background: #e5e7eb; margin-top: 8px; overflow: hidden; }
+    .margin-bar-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+    .margin-green { background: linear-gradient(90deg,#22c55e,#10b981); }
+    .margin-orange { background: linear-gradient(90deg,#f97316,#f59e0b); }
+    .margin-red { background: linear-gradient(90deg,#ef4444,#dc2626); }
+
+    /* ===== MISSION ===== */
+    .mission-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+    .mission-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 10px; }
+    .mission-field label { display: block; font-size: 10px; font-weight: 600; color: #6b7280; margin-bottom: 3px; }
+    .mission-field input { width: 100%; padding: 6px; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 12px; }
+    .mission-field input.disabled { background: #f9fafb; pointer-events: none; }
+    .agents-section { background: #f9fafb; border-radius: 6px; padding: 10px; }
+    .agent-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .agent-row input { padding: 5px; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 12px; }
+    .agent-row input.disabled { background: #f9fafb; pointer-events: none; }
+    .btn { padding: 6px 12px; border: none; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
+    .btn-primary { background: #10b981; color: #fff; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-danger { background: #fee2e2; color: #dc2626; }
+    .btn-purple { background: #8b5cf6; color: #fff; }
+    .btn-cyan { background: #06b6d4; color: #fff; }
+    .btn-indigo { background: #6366f1; color: #fff; }
+    .btn-danger.hidden, .btn-remove-agent.hidden { display: none; }
+
+    /* ===== TOAST ===== */
+    #toastContainer { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 9999; pointer-events: none; width: calc(100% - 32px); max-width: 420px; }
+    .toast { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 12px; color: #fff; font-weight: 600; font-size: 13px; animation: toastIn .35s ease; box-shadow: 0 10px 30px rgba(0,0,0,.18); pointer-events: auto; width: 100%; backdrop-filter: blur(8px); }
+    .toast.success { background: linear-gradient(135deg,#10b981,#059669); }
+    .toast.error { background: linear-gradient(135deg,#ef4444,#dc2626); }
+    .toast.warning { background: linear-gradient(135deg,#f59e0b,#d97706); }
+    .toast.info { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+    .toast-icon { font-size: 18px; flex-shrink: 0; }
+    @keyframes toastIn { from { opacity:0; transform: translateY(24px) scale(.95); } to { opacity:1; transform: translateY(0) scale(1); } }
+    @keyframes toastOut { to { opacity:0; transform: translateY(12px) scale(.95); } }
+
+    /* ===== LOADING ===== */
+    .loading-overlay { position: fixed; inset: 0; background: rgba(243,244,246,.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; gap: 12px; backdrop-filter: blur(4px); }
+    .loading-overlay.hidden { display: none; }
+    .loading-spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #10b981; border-radius: 50%; animation: spin .8s linear infinite; }
+    .loading-text { font-size: 14px; font-weight: 600; color: #374151; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== CHART ===== */
+    .chart-container { height: 300px; margin-top: 12px; }
+
+    /* ===== RESPONSIVE ===== */
+    .sidebar-toggle { display: none; position: fixed; bottom: 20px; left: 20px; width: 48px; height: 48px; border-radius: 50%; background: #10b981; color: #fff; border: none; font-size: 20px; cursor: pointer; z-index: 150; box-shadow: 0 4px 16px rgba(16,185,129,.4); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 90; }
+    .sidebar-overlay.open { display: block; }
+    .status-bar { padding: 8px 16px; font-size: 11px; display: flex; align-items: center; gap: 8px; }
+    .status-online { background: #d1fae5; color: #065f46; }
+    .status-offline { background: #fef3c7; color: #92400e; }
+    .sync-badge { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; background: linear-gradient(135deg,#e0e7ff,#dbeafe); border: 1px solid #a5b4fc; border-radius: 6px; font-size: 11px; font-weight: 600; color: #4338ca; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px 14px; background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 12px; font-size: 11px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-badge { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 10px; }
+
+    @media(max-width:768px) {
+      .sidebar { transform: translateX(-100%); width: 260px; }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; }
+      .sidebar-toggle { display: flex; align-items: center; justify-content: center; }
+      .header { padding: 10px 14px; }
+      .btn-save { padding: 8px 14px; font-size: 12px; }
+      .content { padding: 12px; }
+      .cell-input { width: 42px; font-size: 11px; }
+      .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+  <!-- ===== LOGIN OVERLAY ===== -->
+  <div id="loginOverlay">
+    <div class="login-box">
+      <h1>🚗 FleetPro</h1>
+      <p class="sub">Gestion de flotte — Connexion</p>
+      <form id="loginForm">
+        <label>Email</label>
+        <input type="email" id="loginEmail" value="admin@fleetpro.com" required>
+        <label>Mot de passe</label>
+        <input type="password" id="loginPassword" value="admin123" required>
+        <div class="error" id="loginError">Identifiants incorrects</div>
+        <button type="submit" class="btn-login">Se connecter</button>
+      </form>
+      <p style="margin-top:16px;font-size:11px;color:#9ca3af;text-align:center;">admin@fleetpro.com / admin123 · agent@fleetpro.com / agent123</p>
+    </div>
+  </div>
+
+  <!-- ===== SIDEBAR OVERLAY (mobile) ===== -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="Menu">☰</button>
+
+  <!-- ===== LOADING ===== -->
+  <div class="loading-overlay hidden" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Chargement en cours...</div>
+  </div>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>🚗 FleetPro</h1>
+      <p>Gestion de flotte</p>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <button class="nav-item active" data-view="dashboard">📊 Tableau de bord</button>
+      <button class="nav-item" data-view="sixt">🟠 Suivi SIXT</button>
+      <button class="nav-item" data-view="enterprise">🔵 Suivi ENTERPRISE</button>
+      <button class="nav-item" data-view="missions">🚚 Missions IN/OUT</button>
+      <button class="nav-item" data-view="planning">👥 Planning Équipe</button>
+      <button class="nav-item" data-view="reglages">⚙️ Réglages</button>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="btn-logout" id="btnLogout">🚪 Déconnexion</button>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main" id="mainApp">
+    <div id="statusBar" class="status-bar status-offline">⏳ Connexion...</div>
+
+    <header class="header">
+      <div class="month-selector">
+        <button id="prevMonth">‹</button>
+        <div class="month-display" id="monthDisplay">Juillet 2026</div>
+        <button id="nextMonth">›</button>
+      </div>
+      <div class="header-actions">
+        <span class="autosave-badge" id="autosaveBadge"></span>
+        <button class="btn-edit-toggle active" id="btnEditToggle">🔓 Éditer</button>
+        <button class="btn-save" id="btnSave">💾 Sauvegarder</button>
+        <button class="btn-export-excel" id="btnExportExcel">📥 Excel</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- DASHBOARD -->
+      <div id="view-dashboard" class="view active">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <h2 style="font-size:20px;font-weight:800">📊 Tableau de bord</h2>
+          <button class="btn-export" id="btnExportDashboard">📄 Exporter récap</button>
+        </div>
+        <div id="dashboardExport">
+          <div class="kpi-grid" id="dashboardKpis"></div>
+          <div class="card"><div class="card-body" id="dashboardDetails"></div></div>
+          <div class="card"><div class="card-header"><h2>📈 Évolution du CA (SIXT vs ENTERPRISE)</h2></div><div class="card-body"><div class="chart-container"><canvas id="caChart"></canvas></div></div></div>
+        </div>
+      </div>
+
+      <!-- SIXT -->
+      <div id="view-sixt" class="view">
+        <h2 style="font-size:20px;font-weight:800;margin-bottom:16px">🟠 Suivi SIXT</h2>
+        <div class="card"><div class="table-container">
+          <table><thead><tr>
+            <th class="text-left">Date</th><th>Prép</th><th>Quick</th><th>T1→T2</th><th>T2→T1</th><th>T2→P3</th><th>Refuel</th><th>Check</th><th>BB</th><th>NS</th><th>CA</th>
+          </tr></thead><tbody id="sixtBody"></tbody><tfoot id="sixtFoot"></tfoot></table>
+        </div></div>
+      </div>
+
+      <!-- ENTERPRISE -->
+      <div id="view-enterprise" class="view">
+        <h2 style="font-size:20px;font-weight:800;margin-bottom:16px">🔵 Suivi ENTERPRISE</h2>
+        <div class="card"><div class="table-container">
+          <table><thead><tr>
+            <th class="text-left">Date</th><th>Préparation</th><th>Convoyage</th><th>NS</th><th>CA</th>
+          </tr></thead><tbody id="enterpriseBody"></tbody><tfoot id="enterpriseFoot"></tfoot></table>
+        </div></div>
+      </div>
+
+      <!-- MISSIONS -->
+      <div id="view-missions" class="view">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <h2 style="font-size:20px;font-weight:800">🚚 Missions IN/OUT</h2>
+          <button class="btn btn-purple" id="btnAddMission">➕ Mission</button>
+        </div>
+        <div class="kpi-grid" id="missionsKpis"></div>
+        <div id="missionsContainer"></div>
+      </div>
+
+      <!-- PLANNING -->
+      <div id="view-planning" class="view">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <h2 style="font-size:20px;font-weight:800">👥 Planning</h2>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-purple" id="btnExportPlanning">📸</button>
+            <button class="btn btn-cyan" id="btnAddAgent">➕</button>
+          </div>
+        </div>
+        <div class="planning-controls">
+          <div><label>Semaine:</label> <select id="weekSelector" class="week-select">
+            <option value="s1">S1 (1-7)</option><option value="s2">S2 (8-14)</option><option value="s3">S3 (15-21)</option><option value="s4">S4 (22-28)</option><option value="s5">S5 (29-31)</option>
+          </select></div>
+          <div><label>Lundi:</label> <input type="date" id="mondayDate"></div>
+          <div class="sync-badge">🔄 → <strong id="syncWeekLabel">S1</strong></div>
+        </div>
+        <div class="legend">
+          <span style="font-weight:600;color:#6b7280">Légende:</span>
+          <div class="legend-item"><span class="legend-badge" style="background:#ffff00">—</span>Vide</div>
+          <div class="legend-item"><span class="legend-badge" style="background:#fbbf24">M</span>Matin</div>
+          <div class="legend-item"><span class="legend-badge" style="background:#4ade80">S</span>Soir</div>
+          <div class="legend-item"><span class="legend-badge" style="background:#3b82f6;color:#fff">T</span>Inter</div>
+          <div class="legend-item"><span class="legend-badge" style="background:#9ca3af;color:#fff">X</span>Repos</div>
+        </div>
+        <div class="kpi-grid" id="planningKpis"></div>
+        <div class="card" id="planningExport">
+          <div style="background:linear-gradient(135deg,#06b6d4,#0891b2);padding:12px 16px;color:#fff">
+            <strong>🚗 Planning</strong> <span id="planningWeekTitle" style="font-size:12px;opacity:.9;margin-left:8px"></span>
+          </div>
+          <div class="table-container">
+            <table><thead><tr>
+              <th class="text-left">Nom</th><th id="thLun">Lun</th><th id="thMar">Mar</th><th id="thMer">Mer</th><th id="thJeu">Jeu</th><th id="thVen">Ven</th><th id="thSam">Sam</th><th id="thDim">Dim</th><th>€/J</th><th>J</th><th>€</th><th></th>
+            </tr></thead><tbody id="planningBody"></tbody><tfoot id="planningFoot"></tfoot></table>
+          </div>
+        </div>
+        <div style="margin-top:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="font-size:16px;font-weight:700">📅 Cumul Mensuel <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:10px;font-size:10px;margin-left:6px">Auto</span></h3>
+            <button class="btn btn-indigo" id="btnExportCumul">📸</button>
+          </div>
+          <div class="kpi-grid" id="cumulKpis"></div>
+          <div class="card" id="cumulExport">
+            <div class="cumul-header"><strong>📊 Cumul</strong> <span id="cumulMonthTitle" style="font-size:11px;opacity:.8;margin-left:8px"></span></div>
+            <div class="table-container">
+              <table><thead><tr>
+                <th class="text-left">Nom</th><th>S1</th><th>S2</th><th>S3</th><th>S4</th><th>S5</th><th>€/J</th><th>Total</th><th>Salaire</th>
+              </tr></thead><tbody id="cumulBody"></tbody><tfoot id="cumulFoot"></tfoot></table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RÉGLAGES -->
+      <div id="view-reglages" class="view">
+        <h2 style="font-size:20px;font-weight:800;margin-bottom:16px">⚙️ Réglages</h2>
+        <div class="tarifs-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px">
+          <div class="tarif-card"><div class="tarif-card-header sixt" style="padding:14px 16px;color:#fff;font-weight:700;font-size:14px;background:linear-gradient(135deg,#f97316,#ea580c)">🟠 Tarifs SIXT</div><div class="tarif-card-body" id="tarifsSixt" style="padding:12px"></div></div>
+          <div class="tarif-card"><div class="tarif-card-header enterprise" style="padding:14px 16px;color:#fff;font-weight:700;font-size:14px;background:linear-gradient(135deg,#3b82f6,#2563eb)">🔵 Tarifs ENTERPRISE</div><div class="tarif-card-body" id="tarifsEnterprise" style="padding:12px"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== DATALIST AGENTS ===== -->
+  <datalist id="agentsList">
+    <option value="Shakh"><option value="Adlan"><option value="Achraf"><option value="Beck"><option value="Youssef">
+    <option value="Mohamed"><option value="Karim"><option value="Sofiane"><option value="Nassim"><option value="Bilal">
+  </datalist>
+
+  <div id="toastContainer"></div>
+
+  <script>
+    // ======================================================================
+    // 1. CONFIGURATION SUPABASE
+    // ======================================================================
+    const SUPABASE_URL = 'https://vfpqufwxcjzfnqqymuss.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmcHF1Znd4Y2p6Zm5xcXltdXNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNjMwNjEsImV4cCI6MjA5ODkzOTA2MX0.mjgzvmZ-UWRFn219655MTzdjZzUewWWuog2bEAHCMdY';
+
+    let supabaseClient = null;
+    try {
+      if (window.supabase && SUPABASE_URL && SUPABASE_KEY) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      }
+    } catch(e) { console.warn('Supabase init failed:', e); }
+
+    // ======================================================================
+    // 2. ÉTAT GLOBAL
+    // ======================================================================
+    const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    let currentYear = new Date().getFullYear();
+    let currentMonth = new Date().getMonth() + 1;
+    let selectedWeek = 's1';
+
+    let currentUser = null;
+    let isAdmin = false;
+    let editMode = true;   // ← Modifié : l'admin démarre en édition
+
+    let tarifsSixt = {preparation:15.5,quick_prep:8,t1_t2:5,t2_t1:5,t2_p3:25,refueling:12,check_voiture:2.9,siege_bb:2.9,nettoyage_ns:20};
+    let tarifsEnterprise = {preparation:18,convoyage:7,nettoyage_ns:25};
+    let dataSixt = [];
+    let dataEnterprise = [];
+    let dataMissions = [];
+    let planningByWeek = { s1:[], s2:[], s3:[], s4:[], s5:[] };
+    let dataCumul = [];
+
+    let isLoading = false;
+    let isSaving = false;
+    let autoSaveTimer = null;
+    let hasUnsavedChanges = false;
+    let isOnline = false;
+    let chartInstance = null;
+
+    let deletedMissionIds = [];
+    let deletedPlanningIds = [];
+    let deletedCumulIds = [];
+
+    // ======================================================================
+    // 3. UTILITAIRES
+    // ======================================================================
+    const getMois = () => `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const getDays = (y,m) => new Date(y,m,0).getDate();
+    const fmt = n => new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n||0);
+    const uuid = () => {
+      if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+        return v.toString(16);
+      });
+    };
+
+    // ======================================================================
+    // 4. TOASTS
+    // ======================================================================
+    function toast(msg, type='success') {
+      const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+      const t = document.createElement('div');
+      t.className = `toast ${type}`;
+      t.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ️'}</span><span>${msg}</span>`;
+      const c = document.getElementById('toastContainer');
+      c.appendChild(t);
+      setTimeout(() => { t.style.animation = 'toastOut .3s ease forwards'; setTimeout(() => t.remove(), 300); }, 3500);
+    }
+
+    // ======================================================================
+    // 5. LOADING
+    // ======================================================================
+    function showLoading(msg='Chargement en cours...') {
+      isLoading = true;
+      document.getElementById('loadingText').textContent = msg;
+      document.getElementById('loadingOverlay').classList.remove('hidden');
+    }
+    function hideLoading() {
+      isLoading = false;
+      document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    // ======================================================================
+    // 6. AUTHENTIFICATION
+    // ======================================================================
+    const USERS = {
+      'admin@fleetpro.com': { password: 'admin123', role: 'admin' },
+      'agent@fleetpro.com': { password: 'agent123', role: 'agent' }
+    };
+
+    function login(email, password) {
+      const user = USERS[email];
+      if (user && user.password === password) {
+        currentUser = { email, role: user.role };
+        isAdmin = (user.role === 'admin');
+        localStorage.setItem('fleetpro_user', JSON.stringify(currentUser));
+        return true;
+      }
+      return false;
+    }
+
+    function logout() {
+      currentUser = null;
+      isAdmin = false;
+      localStorage.removeItem('fleetpro_user');
+      document.getElementById('loginOverlay').classList.remove('hidden');
+      document.getElementById('mainApp').style.display = 'none';
+    }
+
+    function checkAuth() {
+      const stored = localStorage.getItem('fleetpro_user');
+      if (stored) {
+        try {
+          const user = JSON.parse(stored);
+          if (USERS[user.email] && USERS[user.email].role === user.role) {
+            currentUser = user;
+            isAdmin = (user.role === 'admin');
+            return true;
+          }
+        } catch(e) {}
+      }
+      return false;
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value.trim();
+      const errorEl = document.getElementById('loginError');
+      if (login(email, password)) {
+        errorEl.style.display = 'none';
+        document.getElementById('loginOverlay').classList.add('hidden');
+        document.getElementById('mainApp').style.display = 'block';
+        initApp();
+      } else {
+        errorEl.style.display = 'block';
+      }
+    });
+
+    document.getElementById('btnLogout').addEventListener('click', logout);
+
+    // ======================================================================
+    // 7. MODE LECTURE / ÉDITION (modifié pour démarrer en édition)
+    // ======================================================================
+    function toggleEditMode() {
+      if (!isAdmin) return;
+      editMode = !editMode;
+      const btn = document.getElementById('btnEditToggle');
+      btn.textContent = editMode ? '🔓 Éditer' : '🔒 Lecture';
+      btn.classList.toggle('active', editMode);
+      applyEditMode();
+      document.getElementById('btnSave').style.display = editMode ? 'flex' : 'none';
+      if (!editMode) {
+        clearTimeout(autoSaveTimer);
+        updateAutosaveBadge('');
+      }
+    }
+
+    function applyEditMode() {
+      const editable = editMode && isAdmin;
+      // Champs de saisie
+      document.querySelectorAll('.cell-input, .nom-input, .mission-field input, .agent-row input, .tarif-field input, .planning-select')
+        .forEach(el => {
+          if (editable) {
+            el.classList.remove('disabled');
+            el.disabled = false;
+          } else {
+            el.classList.add('disabled');
+            el.disabled = true;
+          }
+        });
+      // Boutons de suppression
+      document.querySelectorAll('.btn-danger, .btn-remove-agent').forEach(el => {
+        el.classList.toggle('hidden', !editable);
+      });
+      // Boutons d'ajout
+      document.getElementById('btnAddMission').style.display = editable ? 'inline-flex' : 'none';
+      document.getElementById('btnAddAgent').style.display = editable ? 'inline-flex' : 'none';
+      // Bouton sauvegarder
+      document.getElementById('btnSave').style.display = editable ? 'flex' : 'none';
+    }
+
+    // ======================================================================
+    // 8. AUTO-SAVE
+    // ======================================================================
+    function updateAutosaveBadge(state) {
+      const b = document.getElementById('autosaveBadge');
+      if (state === 'saving') { b.className = 'autosave-badge saving'; b.textContent = '⏳ Sauvegarde auto...'; }
+      else if (state === 'saved') { b.className = 'autosave-badge saved'; b.textContent = '✓ Sauvegardé'; setTimeout(() => { if(b.textContent==='✓ Sauvegardé') b.textContent=''; }, 3000); }
+      else if (state === 'pending') { b.className = 'autosave-badge'; b.textContent = '● Modifications non sauvegardées'; }
+      else { b.textContent = ''; }
+    }
+
+    function scheduleAutoSave() {
+      if (!editMode || !isAdmin || !isOnline || !supabaseClient) return;
+      hasUnsavedChanges = true;
+      updateAutosaveBadge('pending');
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => saveData(true), 3000);
+    }
+
+    // ======================================================================
+    // 9. DATES & MOIS
+    // ======================================================================
+    function updateMonth() {
+      document.getElementById('monthDisplay').textContent = `${MONTHS[currentMonth-1]} ${currentYear}`;
+      document.getElementById('cumulMonthTitle').textContent = `${MONTHS[currentMonth-1]} ${currentYear}`;
+    }
+
+    function getCurrentMonday() {
+      const now = new Date();
+      const day = now.getDay();
+      const diff = (day === 0 ? -6 : 1) - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diff);
+      return monday;
+    }
+
+    function setMondayDate(date) {
+      const m = date || getCurrentMonday();
+      const y = m.getFullYear();
+      const mo = String(m.getMonth()+1).padStart(2,'0');
+      const d = String(m.getDate()).padStart(2,'0');
+      document.getElementById('mondayDate').value = `${y}-${mo}-${d}`;
+      updateDates();
+    }
+
+    function updateDates() {
+      const m = document.getElementById('mondayDate').value;
+      if(!m) return;
+      const mon = new Date(m);
+      ['thLun','thMar','thMer','thJeu','thVen','thSam','thDim'].forEach((id,i) => {
+        const d = new Date(mon); d.setDate(mon.getDate()+i);
+        document.getElementById(id).innerHTML = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][i]+'<br><small>'+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'</small>';
+      });
+      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+      document.getElementById('planningWeekTitle').textContent = `${mon.getDate()}/${mon.getMonth()+1} - ${sun.getDate()}/${sun.getMonth()+1}`;
+      const dom = mon.getDate();
+      const week = dom<=7?'s1':dom<=14?'s2':dom<=21?'s3':dom<=28?'s4':'s5';
+      selectedWeek = week;
+      document.getElementById('weekSelector').value = week;
+      document.getElementById('syncWeekLabel').textContent = week.toUpperCase();
+      syncToCumul();
+      renderPlanning();
+    }
+
+    // ======================================================================
+    // 10. NAVIGATION
+    // ======================================================================
+    document.querySelectorAll('.nav-item').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active');
+        document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+        const viewId = 'view-'+b.dataset.view;
+        document.getElementById(viewId).classList.add('active');
+        if (b.dataset.view === 'dashboard') {
+          renderChart();
+        }
+      };
+    });
+
+    // ======================================================================
+    // 11. RÔLE
+    // ======================================================================
+    function applyRoleVisibility() {
+      const navItems = document.querySelectorAll('.nav-item');
+      if (isAdmin) {
+        navItems.forEach(el => el.classList.remove('hidden'));
+        document.getElementById('btnEditToggle').style.display = 'inline-flex';
+        document.getElementById('btnExportExcel').style.display = 'inline-flex';
+        // L'admin démarre en édition
+        editMode = true;
+        document.getElementById('btnEditToggle').textContent = '🔓 Éditer';
+        document.getElementById('btnEditToggle').classList.add('active');
+        document.getElementById('btnSave').style.display = 'flex';
+        document.getElementById('btnAddMission').style.display = 'inline-flex';
+        document.getElementById('btnAddAgent').style.display = 'inline-flex';
+      } else {
+        // Agent : lecture seule
+        navItems.forEach(el => {
+          const view = el.dataset.view;
+          if (view === 'planning' || view === 'missions') {
+            el.classList.remove('hidden');
+          } else {
+            el.classList.add('hidden');
+          }
+        });
+        document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+        const planningNav = document.querySelector('.nav-item[data-view="planning"]');
+        if (planningNav) {
+          planningNav.classList.add('active');
+          document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+          document.getElementById('view-planning').classList.add('active');
+        }
+        editMode = false;
+        document.getElementById('btnEditToggle').style.display = 'none';
+        document.getElementById('btnSave').style.display = 'none';
+        document.getElementById('btnAddMission').style.display = 'none';
+        document.getElementById('btnAddAgent').style.display = 'none';
+        document.getElementById('btnExportExcel').style.display = 'none';
+        document.querySelectorAll('.btn-danger, .btn-remove-agent').forEach(el => el.classList.add('hidden'));
+      }
+      applyEditMode();
+    }
+
+    // ======================================================================
+    // 12. CHARGEMENT DES DONNÉES
+    // ======================================================================
+    async function loadData() {
+      const mois = getMois();
+      showLoading('Chargement des données...');
+      setSaveButtonState(true);
+
+      dataSixt = [];
+      dataEnterprise = [];
+      dataMissions = [];
+      planningByWeek = { s1:[], s2:[], s3:[], s4:[], s5:[] };
+      dataCumul = [];
+
+      if (!navigator.onLine) {
+        updateStatus(false);
+        toast('Mode hors-ligne — données locales uniquement', 'warning');
+        hideLoading();
+        renderAll();
+        setSaveButtonState(false);
+        return;
+      }
+
+      if (!supabaseClient) {
+        updateStatus(false);
+        toast('Supabase non configuré', 'warning');
+        hideLoading();
+        renderAll();
+        setSaveButtonState(false);
+        return;
+      }
+
+      try {
+        const [r1, r2, r3, r4, r5, r6] = await Promise.all([
+          supabaseClient.from('reglages').select('*').eq('id','sixt').maybeSingle(),
+          supabaseClient.from('reglages').select('*').eq('id','enterprise').maybeSingle(),
+          supabaseClient.from('suivi_sixt').select('*').gte('date',`${mois}-01`).lte('date',`${mois}-31`),
+          supabaseClient.from('suivi_enterprise').select('*').gte('date',`${mois}-01`).lte('date',`${mois}-31`),
+          supabaseClient.from('missions_inout').select('*').eq('mois',mois),
+          supabaseClient.from('equipe_planning').select('*').eq('mois',mois),
+        ]);
+
+        const hasError = [r1,r2,r3,r4,r5,r6].some(r => r.error);
+        if (hasError) throw new Error('Erreur lors de la requête Supabase');
+
+        if(r1.data) tarifsSixt = { ...tarifsSixt, ...r1.data };
+        if(r2.data) tarifsEnterprise = { ...tarifsEnterprise, ...r2.data };
+        if(r3.data) dataSixt = r3.data;
+        if(r4.data) dataEnterprise = r4.data;
+        if(r5.data) dataMissions = r5.data.map(m => ({ ...m, date: m.date_mission, agents_json: m.agents_json||[], _persisted: true }));
+        if(r6.data) {
+          r6.data.forEach(r => {
+            const w = (r.semaine_du || 's1').toLowerCase();
+            if (planningByWeek[w] && !planningByWeek[w].find(x => x.id === r.id))
+              planningByWeek[w].push({ ...r, semaine_du: w, _persisted: true });
+          });
+        }
+
+        const r7 = await supabaseClient.from('equipe_cumul_mois').select('*').eq('mois',mois);
+        if(r7.error) throw new Error('equipe_cumul_mois: '+r7.error.message);
+        if(r7.data) dataCumul = r7.data.map(r => ({ ...r, _persisted: true }));
+
+        deletedMissionIds = [];
+        deletedPlanningIds = [];
+        deletedCumulIds = [];
+        hasUnsavedChanges = false;
+
+        updateStatus(true);
+        toast('Données chargées avec succès');
+      } catch(e) {
+        console.error('Supabase load error:', e);
+        updateStatus(false);
+        toast('Erreur de chargement — mode hors-ligne activé', 'error');
+      }
+
+      ensureMinimumRows();
+      renderAll();
+      syncToCumul();
+      hideLoading();
+      setSaveButtonState(false);
+    }
+
+    // ======================================================================
+    // 13. GARANTIR MINIMUM 20 LIGNES
+    // ======================================================================
+    function ensureMinimumRows() {
+      const MIN_ROWS = 20;
+      ['s1','s2','s3','s4','s5'].forEach(week => {
+        while (planningByWeek[week].length < MIN_ROWS) {
+          const newRow = {
+            id: uuid(),
+            mois: getMois(),
+            nom: '',
+            lundi: '', mardi: '', mercredi: '', jeudi: '', vendredi: '', samedi: '', dimanche: '',
+            taux_journalier: 80,
+            semaine_du: week,
+            _persisted: false
+          };
+          planningByWeek[week].push(newRow);
+        }
+      });
+      while (dataCumul.length < MIN_ROWS) {
+        dataCumul.push({
+          id: uuid(),
+          mois: getMois(),
+          nom: '',
+          s1:0, s2:0, s3:0, s4:0, s5:0,
+          total_mois:0,
+          taux_journalier:80,
+          _persisted: false
+        });
+      }
+    }
+
+    // ======================================================================
+    // 14. SAUVEGARDE
+    // ======================================================================
+    async function saveData(isAuto = false) {
+      if (isSaving || !editMode || !isAdmin) return;
+      const mois = getMois();
+
+      if (!navigator.onLine || !supabaseClient) {
+        updateStatus(false);
+        toast('Mode hors-ligne — données non sauvegardées', 'warning');
+        return;
+      }
+
+      isSaving = true;
+      syncToCumul();
+      if (isAuto) updateAutosaveBadge('saving');
+      else setSaveButtonState(true);
+
+      const erreurs = [];
+
+      try {
+        const { error } = await supabaseClient.from('reglages').upsert({ id: 'sixt', ...tarifsSixt });
+        if(error) throw error;
+        const { error: e2 } = await supabaseClient.from('reglages').upsert({ id: 'enterprise', ...tarifsEnterprise });
+        if(e2) throw e2;
+      } catch(e) {
+        console.error('Erreur sauvegarde réglages:', e);
+        erreurs.push('Réglages: ' + (e.message||e));
+      }
+
+      try {
+        for(const r of dataSixt) {
+          const { error } = await supabaseClient.from('suivi_sixt').upsert(r);
+          if(error) throw error;
+        }
+      } catch(e) {
+        console.error('Erreur sauvegarde suivi_sixt:', e);
+        erreurs.push('Suivi SIXT: ' + (e.message||e));
+      }
+
+      try {
+        for(const r of dataEnterprise) {
+          const { error } = await supabaseClient.from('suivi_enterprise').upsert(r);
+          if(error) throw error;
+        }
+      } catch(e) {
+        console.error('Erreur sauvegarde suivi_enterprise:', e);
+        erreurs.push('Suivi ENTERPRISE: ' + (e.message||e));
+      }
+
+      try {
+        for(const m of dataMissions) {
+          const payload = {
+            id: m.id,
+            mois,
+            date_mission: m.date || null,
+            client: m.client || '',
+            lieu_out: m.lieu_out || '',
+            lieu_in: m.lieu_in || '',
+            tarif_client: m.tarif_client || 0,
+            tarif_agent: m.tarif_agent || 0,
+            agents_json: m.agents_json || [],
+            statut: m.statut || 'en_cours'
+          };
+          const { error } = await supabaseClient.from('missions_inout').upsert(payload);
+          if(error) throw error;
+          m._persisted = true;
+        }
+        if(deletedMissionIds.length) {
+          const { error } = await supabaseClient.from('missions_inout').delete().in('id', deletedMissionIds);
+          if(error) throw error;
+          deletedMissionIds = [];
+        }
+      } catch(e) {
+        console.error('Erreur sauvegarde missions_inout:', e);
+        erreurs.push('Missions IN/OUT: ' + (e.message||e));
+      }
+
+      try {
+        for (const week of ['s1','s2','s3','s4','s5']) {
+          for (const r of planningByWeek[week].filter(x => x.nom.trim())) {
+            const payload = {
+              id: r.id,
+              mois,
+              nom: r.nom,
+              semaine_du: week,
+              lundi: r.lundi||'', mardi: r.mardi||'', mercredi: r.mercredi||'',
+              jeudi: r.jeudi||'', vendredi: r.vendredi||'', samedi: r.samedi||'', dimanche: r.dimanche||'',
+              taux_journalier: r.taux_journalier||80
+            };
+            const { error } = await supabaseClient.from('equipe_planning').upsert(payload);
+            if(error) throw error;
+            r._persisted = true;
+            r.semaine_du = week;
+          }
+          const vides = planningByWeek[week].filter(x => x._persisted && !x.nom.trim()).map(x => x.id);
+          if (vides.length) {
+            const { error } = await supabaseClient.from('equipe_planning').delete().in('id', vides);
+            if(error) throw error;
+          }
+        }
+        if(deletedPlanningIds.length) {
+          const { error } = await supabaseClient.from('equipe_planning').delete().in('id', [...new Set(deletedPlanningIds)]);
+          if(error) throw error;
+          deletedPlanningIds = [];
+        }
+      } catch(e) {
+        console.error('Erreur sauvegarde equipe_planning:', e);
+        erreurs.push('Planning équipe: ' + (e.message||e));
+      }
+
+      try {
+        for(const r of dataCumul.filter(x => x.nom.trim())) {
+          const payload = {
+            ...r,
+            mois,
+            total_mois: (r.s1||0)+(r.s2||0)+(r.s3||0)+(r.s4||0)+(r.s5||0)
+          };
+          delete payload._persisted;
+          const { error } = await supabaseClient.from('equipe_cumul_mois').upsert(payload);
+          if(error) throw error;
+          r._persisted = true;
+        }
+        const aSupprimerCumul = dataCumul.filter(x => x._persisted && !x.nom.trim()).map(x => x.id).concat(deletedCumulIds);
+        if(aSupprimerCumul.length) {
+          const { error } = await supabaseClient.from('equipe_cumul_mois').delete().in('id', aSupprimerCumul);
+          if(error) throw error;
+          deletedCumulIds = [];
+        }
+      } catch(e) {
+        console.error('Erreur sauvegarde equipe_cumul_mois:', e);
+        erreurs.push('Cumul mensuel: ' + (e.message||e));
+      }
+
+      isSaving = false;
+      setSaveButtonState(false);
+
+      if(erreurs.length) {
+        toast('Erreur sur ' + erreurs.length + ' table(s) — ' + erreurs[0], 'error');
+        updateStatus(false);
+      } else {
+        hasUnsavedChanges = false;
+        updateStatus(true);
+        if (isAuto) {
+          updateAutosaveBadge('saved');
+          toast('Sauvegardé automatiquement', 'info');
+        } else {
+          toast('Toutes les données sauvegardées !');
+        }
+      }
+    }
+
+    function setSaveButtonState(saving) {
+      const btn = document.getElementById('btnSave');
+      btn.disabled = saving || isLoading;
+      btn.innerHTML = saving ? '<span class="spinner"></span> Sauvegarde...' : '💾 Sauvegarder';
+    }
+
+    // ======================================================================
+    // 15. RENDU DES VUES (inchangé, mais on ajuste le mode édition)
+    // ======================================================================
+    function renderAll() {
+      renderReglages();
+      renderSixt();
+      renderEnterprise();
+      renderMissions();
+      renderPlanning();
+      renderCumul();
+      renderDashboard();
+      renderChart();
+      applyEditMode(); // ← applique l'état editMode
+      checkBudgetAlert();
+    }
+
+    // ===== Réglages =====
+    function renderReglages() {
+      const sf = [{k:'preparation',l:'Préparation'},{k:'quick_prep',l:'Quick'},{k:'t1_t2',l:'T1→T2'},{k:'t2_t1',l:'T2→T1'},{k:'t2_p3',l:'T2→P3'},{k:'refueling',l:'Refuel'},{k:'check_voiture',l:'Check'},{k:'siege_bb',l:'Siège BB'},{k:'nettoyage_ns',l:'NS'}];
+      const ef = [{k:'preparation',l:'Préparation'},{k:'convoyage',l:'Convoyage'},{k:'nettoyage_ns',l:'NS'}];
+      document.getElementById('tarifsSixt').innerHTML = sf.map(f => `
+        <div class="tarif-field"><label>${f.l}</label><input type="number" step="0.01" value="${tarifsSixt[f.k]}" data-t="sixt" data-k="${f.k}" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}>€</div>
+      `).join('');
+      document.getElementById('tarifsEnterprise').innerHTML = ef.map(f => `
+        <div class="tarif-field"><label>${f.l}</label><input type="number" step="0.01" value="${tarifsEnterprise[f.k]}" data-t="ent" data-k="${f.k}" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}>€</div>
+      `).join('');
+      document.querySelectorAll('[data-t]').forEach(i => {
+        i.oninput = e => {
+          if (!editMode || !isAdmin) return;
+          const v = parseFloat(e.target.value)||0;
+          if(e.target.dataset.t==='sixt') tarifsSixt[e.target.dataset.k]=v;
+          else tarifsEnterprise[e.target.dataset.k]=v;
+          calcAll();
+          scheduleAutoSave();
+        };
+      });
+    }
+
+    // ===== SIXT =====
+    function renderSixt() {
+      const days = getDays(currentYear,currentMonth);
+      const cols = ['prep','quick_prep','t1_t2','t2_t1','t2_p3','refuel','check_voiture','siege_bb','ns'];
+      for(let d=1; d<=days; d++) {
+        const ds = `${getMois()}-${String(d).padStart(2,'0')}`;
+        if(!dataSixt.find(r=>r.date===ds)) dataSixt.push({date:ds,prep:0,quick_prep:0,t1_t2:0,t2_t1:0,t2_p3:0,refuel:0,check_voiture:0,siege_bb:0,ns:0,ca_jour:0});
+      }
+      dataSixt.sort((a,b)=>a.date.localeCompare(b.date));
+      dataSixt = dataSixt.filter(r=>r.date.startsWith(getMois()));
+
+      document.getElementById('sixtBody').innerHTML = dataSixt.map((r,i) => {
+        const dt = new Date(r.date+'T00:00:00');
+        const dn = dt.toLocaleDateString('fr-FR',{weekday:'short'});
+        const we = dt.getDay()===0||dt.getDay()===6;
+        return `<tr style="${we?'background:#fffbeb':''}"><td class="text-left"><small style="color:${we?'#d97706':'#9ca3af'}">${dn}</small> <b>${r.date.split('-')[2]}</b></td>${cols.map(c => `<td><input type="number" class="cell-input ${editMode?'':'disabled'}" value="${r[c]||''}" data-tbl="sixt" data-i="${i}" data-c="${c}" placeholder="0" ${editMode?'':'disabled'}></td>`).join('')}<td class="ca-cell">${fmt(r.ca_jour)}</td></tr>`;
+      }).join('');
+      calcSixt();
+    }
+
+    function calcSixt() {
+      const cols=['prep','quick_prep','t1_t2','t2_t1','t2_p3','refuel','check_voiture','siege_bb','ns'];
+      const tarifs=[tarifsSixt.preparation,tarifsSixt.quick_prep,tarifsSixt.t1_t2,tarifsSixt.t2_t1,tarifsSixt.t2_p3,tarifsSixt.refueling,tarifsSixt.check_voiture,tarifsSixt.siege_bb,tarifsSixt.nettoyage_ns];
+      let total=0; const ct=cols.map(()=>0);
+      dataSixt.forEach((r,i) => {
+        let ca=0;
+        cols.forEach((c,j)=>{const v=r[c]||0; ct[j]+=v; ca+=v*tarifs[j];});
+        r.ca_jour=ca; total+=ca;
+      });
+      document.getElementById('sixtFoot').innerHTML=`<tr><td class="text-left"><b>TOTAL</b></td>${ct.map(t=>`<td>${t}</td>`).join('')}<td><b>${fmt(total)}</b></td></tr>`;
+    }
+
+    // ===== ENTERPRISE =====
+    function renderEnterprise() {
+      const days = getDays(currentYear,currentMonth);
+      for(let d=1; d<=days; d++) {
+        const ds = `${getMois()}-${String(d).padStart(2,'0')}`;
+        if(!dataEnterprise.find(r=>r.date===ds)) dataEnterprise.push({date:ds,prep:0,convoyage:0,ns:0,ca_jour:0});
+      }
+      dataEnterprise.sort((a,b)=>a.date.localeCompare(b.date));
+      dataEnterprise = dataEnterprise.filter(r=>r.date.startsWith(getMois()));
+
+      document.getElementById('enterpriseBody').innerHTML = dataEnterprise.map((r,i) => {
+        const dt = new Date(r.date+'T00:00:00');
+        const dn = dt.toLocaleDateString('fr-FR',{weekday:'short'});
+        const we = dt.getDay()===0||dt.getDay()===6;
+        return `<tr style="${we?'background:#fffbeb':''}"><td class="text-left"><small style="color:${we?'#d97706':'#9ca3af'}">${dn}</small> <b>${r.date.split('-')[2]}</b></td>${['prep','convoyage','ns'].map(c => `<td><input type="number" class="cell-input ${editMode?'':'disabled'}" value="${r[c]||''}" data-tbl="ent" data-i="${i}" data-c="${c}" placeholder="0" ${editMode?'':'disabled'}></td>`).join('')}<td class="ca-cell">${fmt(r.ca_jour)}</td></tr>`;
+      }).join('');
+      calcEnterprise();
+    }
+
+    function calcEnterprise() {
+      const tarifs=[tarifsEnterprise.preparation,tarifsEnterprise.convoyage,tarifsEnterprise.nettoyage_ns];
+      let total=0; const ct=[0,0,0];
+      dataEnterprise.forEach(r => {
+        let ca=0;
+        ['prep','convoyage','ns'].forEach((c,j)=>{const v=r[c]||0; ct[j]+=v; ca+=v*tarifs[j];});
+        r.ca_jour=ca; total+=ca;
+      });
+      document.getElementById('enterpriseFoot').innerHTML=`<tr><td class="text-left"><b>TOTAL</b></td>${ct.map(t=>`<td>${t}</td>`).join('')}<td><b>${fmt(total)}</b></td></tr>`;
+    }
+
+    // ===== MISSIONS =====
+    function renderMissions() {
+      const c = document.getElementById('missionsContainer');
+      if(!dataMissions.length) { c.innerHTML='<div class="card" style="padding:30px;text-align:center;color:#9ca3af">🚚 Aucune mission</div>'; calcMissionsKpi(); return; }
+      c.innerHTML = dataMissions.map((m,i) => {
+        const ca = (m.agents_json||[]).reduce((s,a)=>s+(a.quantite||0),0) * (m.tarif_client||0);
+        const mg = (m.agents_json||[]).reduce((s,a)=>s+(a.quantite||0),0) * ((m.tarif_client||0)-(m.tarif_agent||0));
+        return `<div class="mission-card">
+          <div class="mission-grid">
+            <div class="mission-field"><label>Date</label><input type="date" value="${m.date||''}" data-mi="${i}" data-mf="date" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}></div>
+            <div class="mission-field"><label>Client</label><input type="text" value="${m.client||''}" data-mi="${i}" data-mf="client" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}></div>
+            <div class="mission-field"><label>Lieu OUT</label><input type="text" value="${m.lieu_out||''}" data-mi="${i}" data-mf="lieu_out" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}></div>
+            <div class="mission-field"><label>Lieu IN</label><input type="text" value="${m.lieu_in||''}" data-mi="${i}" data-mf="lieu_in" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}></div>
+            <div class="mission-field"><label>Tarif Client €</label><input type="number" step="0.01" value="${m.tarif_client||''}" data-mi="${i}" data-mf="tarif_client" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}></div>
+            <div class="mission-field"><label>Tarif Agent €</label><input type="number" step="0.01" value="${m.tarif_agent||''}" data-mi="${i}" data-mf="tarif_agent" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}></div>
+          </div>
+          <div class="agents-section">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px"><strong style="font-size:11px;color:#6b7280">Agents</strong><button class="btn btn-secondary" style="padding:3px 6px;font-size:10px;${editMode?'':'display:none'}" onclick="addAgent(${i})">+</button></div>
+            ${(m.agents_json||[]).map((a,ai)=>`<div class="agent-row"><input type="text" placeholder="Nom" value="${a.nom||''}" style="flex:1" data-mi="${i}" data-ai="${ai}" data-af="nom" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}><input type="number" placeholder="Qté" value="${a.quantite||''}" style="width:50px" data-mi="${i}" data-ai="${ai}" data-af="quantite" class="${editMode?'':'disabled'}" ${editMode?'':'disabled'}><button class="btn btn-danger btn-remove-agent ${editMode?'':'hidden'}" style="padding:2px 5px;font-size:10px" onclick="rmAgent(${i},${ai})">✕</button></div>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb">
+            <span><small>CA:</small> <b style="color:#8b5cf6">${fmt(ca)}</b> <small>Marge:</small> <b style="color:${mg>=0?'#10b981':'#ef4444'}">${fmt(mg)}</b></span>
+            <button class="btn btn-danger ${editMode?'':'hidden'}" onclick="rmMission(${i})">🗑️</button>
+          </div>
+        </div>`;
+      }).join('');
+      calcMissionsKpi();
+      attachMissionEv();
+    }
+
+    function calcMissionsKpi() {
+      const { ca, marge } = calcMissionTotals();
+      document.getElementById('missionsKpis').innerHTML=`<div class="kpi-card purple"><div class="label">CA Brut</div><div class="value">${fmt(ca)}</div></div><div class="kpi-card ${marge>=0?'green':'red'}"><div class="label">Marge</div><div class="value">${fmt(marge)}</div></div>`;
+    }
+
+    function attachMissionEv() {
+      document.querySelectorAll('[data-mi][data-mf]').forEach(i => i.oninput = e => {
+        if (!editMode || !isAdmin) return;
+        let v = e.target.value;
+        if(e.target.dataset.mf.includes('tarif')) v = parseFloat(v)||0;
+        dataMissions[e.target.dataset.mi][e.target.dataset.mf] = v;
+        renderMissions();
+        scheduleAutoSave();
+      });
+      document.querySelectorAll('[data-mi][data-ai][data-af]').forEach(i => i.oninput = e => {
+        if (!editMode || !isAdmin) return;
+        let v = e.target.value;
+        if(e.target.dataset.af==='quantite') v = parseInt(v)||0;
+        dataMissions[e.target.dataset.mi].agents_json[e.target.dataset.ai][e.target.dataset.af] = v;
+        renderMissions();
+        scheduleAutoSave();
+      });
+    }
+
+    document.getElementById('btnAddMission').onclick = () => {
+      if (!editMode || !isAdmin) return;
+      dataMissions.push({ id:uuid(), mois:getMois(), date:'', client:'', lieu_out:'', lieu_in:'', tarif_client:0, tarif_agent:0, agents_json:[], statut:'en_cours' });
+      renderMissions();
+      scheduleAutoSave();
+    };
+    window.addAgent = (i) => {
+      if (!editMode || !isAdmin) return;
+      dataMissions[i].agents_json.push({nom:'', quantite:0});
+      renderMissions();
+      scheduleAutoSave();
+    };
+    window.rmAgent = (i, ai) => {
+      if (!editMode || !isAdmin) return;
+      dataMissions[i].agents_json.splice(ai,1);
+      renderMissions();
+      scheduleAutoSave();
+    };
+    window.rmMission = (i) => {
+      if (!editMode || !isAdmin) return;
+      if(dataMissions[i]._persisted) deletedMissionIds.push(dataMissions[i].id);
+      dataMissions.splice(i,1);
+      renderMissions();
+      scheduleAutoSave();
+    };
+
+    // ===== PLANNING =====
+    function renderPlanning() {
+      ensureMinimumRows();
+      const dataPlanning = planningByWeek[selectedWeek];
+      const days = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+      document.getElementById('planningBody').innerHTML = dataPlanning.map((r,i) => {
+        const j = countJ(r), sal = j*(r.taux_journalier||0), act = r.nom.trim()!=='';
+        return `<tr style="${!act?'opacity:.5':''}"><td class="text-left"><small style="color:#9ca3af">${i+1}.</small><input type="text" list="agentsList" class="nom-input ${editMode?'':'disabled'}" value="${r.nom}" placeholder="Agent..." data-pi="${i}" data-pf="nom" ${editMode?'':'disabled'}></td>${days.map(d => `<td><select class="planning-select ${editMode?'':'disabled'}" style="background:${getColor(r[d])};color:${getTextColor(r[d])}" data-pi="${i}" data-pf="${d}" ${editMode?'':'disabled'}><option value="" ${!r[d]?'selected':''}>—</option><option value="M" ${r[d]==='M'?'selected':''}>M</option><option value="S" ${r[d]==='S'?'selected':''}>S</option><option value="T" ${r[d]==='T'?'selected':''}>T</option><option value="X" ${r[d]==='X'?'selected':''}>X</option></select></td>`).join('')}<td><input type="number" class="cell-input ${editMode?'':'disabled'}" style="width:45px" value="${r.taux_journalier||''}" data-pi="${i}" data-pf="taux_journalier" ${editMode?'':'disabled'}></td><td><span class="jours-cell ${getJClass(j)}">${j}</span></td><td class="ca-cell">${fmt(sal)}</td><td><button class="btn btn-danger ${editMode?'':'hidden'}" style="padding:2px 5px;font-size:9px" onclick="rmAgent2(${i})">✕</button></td></tr>`;
+      }).join('');
+      calcPlanningTotals();
+      attachPlanningEv();
+    }
+
+    function countJ(r) {
+      return ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].filter(d => ['M','S','T'].includes((r[d]||'').toUpperCase())).length;
+    }
+    function getJClass(j) { return j<=1?'jours-red':j===2?'jours-orange':'jours-green'; }
+    function getColor(v) {
+      v = (v||'').toUpperCase();
+      if(v==='M') return '#fbbf24';
+      if(v==='S') return '#4ade80';
+      if(v==='T') return '#3b82f6';
+      if(v==='X') return '#9ca3af';
+      return '#ffff00';
+    }
+    function getTextColor(v) {
+      v = (v||'').toUpperCase();
+      return (v==='T'||v==='X') ? '#fff' : '#000';
+    }
+
+    function calcPlanningTotals() {
+      const dataPlanning = planningByWeek[selectedWeek];
+      const act = dataPlanning.filter(r => r.nom.trim());
+      const tj = act.reduce((s,r) => s + countJ(r), 0);
+      const ts = act.reduce((s,r) => s + countJ(r)*(r.taux_journalier||0), 0);
+      document.getElementById('planningFoot').innerHTML = `<tr><td class="text-left"><b>TOTAUX (${act.length})</b></td>${['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].map(d => `<td>${act.filter(r => ['M','S','T'].includes((r[d]||'').toUpperCase())).length}</td>`).join('')}<td></td><td><b>${tj}</b></td><td><b>${fmt(ts)}</b></td><td></td></tr>`;
+      document.getElementById('planningKpis').innerHTML = `<div class="kpi-card cyan"><div class="label">Salaires ${selectedWeek.toUpperCase()}</div><div class="value">${fmt(ts)}</div></div><div class="kpi-card gray"><div class="label">Jours</div><div class="value">${tj}</div></div><div class="kpi-card gray"><div class="label">Agents</div><div class="value">${act.length}</div></div>`;
+    }
+
+    function attachPlanningEv() {
+      document.querySelectorAll('[data-pi][data-pf]').forEach(el => {
+        el.onchange = e => {
+          if (!editMode || !isAdmin) return;
+          const i = parseInt(e.target.dataset.pi), f = e.target.dataset.pf;
+          const row = planningByWeek[selectedWeek][i];
+          if (!row) return;
+          let v = e.target.value;
+          if(f==='taux_journalier') v = parseFloat(v)||0;
+          row[f] = v;
+          row.semaine_du = selectedWeek;
+          if(f==='nom' || f==='taux_journalier') {
+            if(dataCumul[i]) { dataCumul[i][f] = v; }
+            ['s1','s2','s3','s4','s5'].forEach(w => {
+              if (planningByWeek[w][i] && w !== selectedWeek) {
+                if (f === 'nom') planningByWeek[w][i].nom = v;
+                if (f === 'taux_journalier') planningByWeek[w][i].taux_journalier = v;
+              }
+            });
+          }
+          if(e.target.tagName==='SELECT') { e.target.style.background = getColor(v); e.target.style.color = getTextColor(v); }
+          renderPlanning();
+          syncToCumul();
+          scheduleAutoSave();
+        };
+      });
+    }
+
+    document.getElementById('btnAddAgent').onclick = () => {
+      if (!editMode || !isAdmin) return;
+      ['s1','s2','s3','s4','s5'].forEach(w => planningByWeek[w].push({ id:uuid(), mois:getMois(), nom:'', lundi:'', mardi:'', mercredi:'', jeudi:'', vendredi:'', samedi:'', dimanche:'', taux_journalier:80, semaine_du:w, _persisted:false }));
+      dataCumul.push({ id:uuid(), mois:getMois(), nom:'', s1:0, s2:0, s3:0, s4:0, s5:0, total_mois:0, taux_journalier:80, _persisted:false });
+      renderPlanning();
+      renderCumul();
+      scheduleAutoSave();
+    };
+    window.rmAgent2 = (i) => {
+      if (!editMode || !isAdmin) return;
+      ['s1','s2','s3','s4','s5'].forEach(w => {
+        if (planningByWeek[w][i] && planningByWeek[w][i]._persisted) deletedPlanningIds.push(planningByWeek[w][i].id);
+        planningByWeek[w].splice(i,1);
+      });
+      if(dataCumul[i] && dataCumul[i]._persisted) deletedCumulIds.push(dataCumul[i].id);
+      dataCumul.splice(i,1);
+      renderPlanning();
+      renderCumul();
+      scheduleAutoSave();
+    };
+
+    // ===== CUMUL =====
+    function syncToCumul() {
+      ['s1','s2','s3','s4','s5'].forEach(week => {
+        planningByWeek[week].forEach((r, i) => {
+          if (dataCumul[i]) {
+            if (r.nom.trim()) dataCumul[i].nom = r.nom;
+            dataCumul[i].taux_journalier = r.taux_journalier ?? dataCumul[i].taux_journalier;
+            dataCumul[i][week] = r.nom.trim() ? countJ(r) : 0;
+          }
+        });
+      });
+      dataCumul.forEach(r => {
+        r.total_mois = (r.s1||0)+(r.s2||0)+(r.s3||0)+(r.s4||0)+(r.s5||0);
+      });
+      renderCumul();
+      renderDashboard();
+    }
+
+    function renderCumul() {
+      document.getElementById('cumulBody').innerHTML = dataCumul.map((r,i) => {
+        const act = r.nom.trim()!=='', sal = (r.total_mois||0)*(r.taux_journalier||0);
+        return `<tr style="${!act?'opacity:.3':''}"><td class="text-left"><small style="color:#9ca3af">${i+1}.</small> ${r.nom||'—'} ${act?'<span style="color:#10b981">🔗</span>':''}</td>${['s1','s2','s3','s4','s5'].map(s => `<td><span class="cumul-cell" style="background:${getCumulBg(r[s])}">${r[s]||0}</span></td>`).join('')}<td><small>${r.taux_journalier||0}€</small></td><td><span class="cumul-cell" style="background:${r.total_mois?'#a7f3d0':'#f3f4f6'};color:${r.total_mois?'#065f46':'#9ca3af'};font-weight:800">${r.total_mois||0}</span></td><td class="text-right" style="color:${sal?'#10b981':'#9ca3af'};font-weight:700">${fmt(sal)}</td></tr>`;
+      }).join('');
+      calcCumulTotals();
+    }
+
+    function getCumulBg(v) { return !v?'#f9fafb':v<=3?'#fef9c3':v<=5?'#d9f99d':'#86efac'; }
+
+    function calcCumulTotals() {
+      const act = dataCumul.filter(r => r.nom.trim());
+      const t = { s1:0, s2:0, s3:0, s4:0, s5:0, tot:0, sal:0 };
+      act.forEach(r => { t.s1 += r.s1||0; t.s2 += r.s2||0; t.s3 += r.s3||0; t.s4 += r.s4||0; t.s5 += r.s5||0; t.tot += r.total_mois||0; t.sal += (r.total_mois||0)*(r.taux_journalier||0); });
+      document.getElementById('cumulFoot').innerHTML = `<tr style="background:#e0e7ff"><td class="text-left" style="color:#4338ca"><b>TOTAUX (${act.length})</b></td>${['s1','s2','s3','s4','s5'].map(s => `<td style="color:#4338ca;font-weight:700">${t[s]}</td>`).join('')}<td></td><td style="color:#4338ca;font-weight:800;font-size:16px">${t.tot}</td><td class="text-right" style="color:#10b981;font-weight:800">${fmt(t.sal)}</td></tr>`;
+      document.getElementById('cumulKpis').innerHTML = `<div class="kpi-card" style="background:#6366f1"><div class="label">Agents</div><div class="value">${act.length}</div></div><div class="kpi-card gray"><div class="label">Total Jours</div><div class="value">${t.tot}</div></div><div class="kpi-card green"><div class="label">Salaires</div><div class="value">${fmt(t.sal)}</div></div>`;
+    }
+
+    // ===== DASHBOARD =====
+    function calcMissionTotals() {
+      let ca = 0, marge = 0, partAg = 0;
+      dataMissions.forEach(m => {
+        const qty = (m.agents_json||[]).reduce((s,a) => s + (a.quantite||0), 0);
+        ca += qty * (m.tarif_client||0);
+        marge += qty * ((m.tarif_client||0) - (m.tarif_agent||0));
+        partAg += qty * (m.tarif_agent||0);
+      });
+      return { ca, marge, partAg };
+    }
+
+    function calcDashboardMetrics() {
+      const caSixt = dataSixt.reduce((s,r) => s + (r.ca_jour||0), 0);
+      const caEnt = dataEnterprise.reduce((s,r) => s + (r.ca_jour||0), 0);
+      const { ca: caMis, marge: mgMis, partAg } = calcMissionTotals();
+      const caTotal = caSixt + caEnt + caMis;
+      const sal = dataCumul.filter(r => r.nom.trim()).reduce((s,r) => s + (r.total_mois||0)*(r.taux_journalier||0), 0);
+      const dep = sal + partAg;
+      const ben = caTotal - dep;
+      const marge = caTotal ? (ben / caTotal * 100) : 0;
+      return { caSixt, caEnt, caMis, mgMis, caTotal, sal, partAg, dep, ben, marge };
+    }
+
+    function renderDashboard() {
+      const { caSixt, caEnt, mgMis, caTotal, sal, partAg, dep, ben, marge } = calcDashboardMetrics();
+      const mClass = getMarginClass(marge);
+      const mWidth = Math.min(Math.max(marge, 0), 100);
+
+      document.getElementById('dashboardKpis').innerHTML = `
+        <div class="kpi-card green"><div class="label">💰 CA Total</div><div class="value">${fmt(caTotal)}</div></div>
+        <div class="kpi-card red"><div class="label">📉 Dépenses</div><div class="value">${fmt(dep)}</div></div>
+        <div class="kpi-card ${ben>=0?'blue':'orange'}"><div class="label">🏆 Bénéfice</div><div class="value">${fmt(ben)}</div></div>
+        <div class="kpi-card purple"><div class="label">📈 Marge globale</div><div class="value">${marge.toFixed(1)}%</div>
+          <div class="margin-bar"><div class="margin-bar-fill ${mClass}" style="width:${mWidth}%"></div></div>
+        </div>
+      `;
+      document.getElementById('dashboardDetails').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+          <div style="padding:12px;background:#fff7ed;border-radius:10px;border-left:3px solid #f97316">
+            <div style="font-size:10px;color:#9a3412">🟠 SIXT</div>
+            <div style="font-size:18px;font-weight:800;color:#ea580c">${fmt(caSixt)}</div>
+          </div>
+          <div style="padding:12px;background:#eff6ff;border-radius:10px;border-left:3px solid #3b82f6">
+            <div style="font-size:10px;color:#1e40af">🔵 ENTERPRISE</div>
+            <div style="font-size:18px;font-weight:800;color:#2563eb">${fmt(caEnt)}</div>
+          </div>
+          <div style="padding:12px;background:#f5f3ff;border-radius:10px;border-left:3px solid #8b5cf6">
+            <div style="font-size:10px;color:#5b21b6">🚚 Missions (marge)</div>
+            <div style="font-size:18px;font-weight:800;color:#7c3aed">${fmt(mgMis)}</div>
+            <div class="margin-bar"><div class="margin-bar-fill ${getMarginClass(caTotal ? mgMis/caTotal*100 : 0)}" style="width:${Math.min(caTotal ? mgMis/caTotal*100 : 0, 100)}%"></div></div>
+          </div>
+        </div>
+        <div style="padding:12px;background:#f9fafb;border-radius:10px">
+          <div style="font-size:11px;color:#6b7280;margin-bottom:8px">💸 Détail dépenses</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Salaires (cumul)</span><b>${fmt(sal)}</b></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Part agents missions</span><b>${fmt(partAg)}</b></div>
+          <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid #e5e7eb"><b>Total dépenses</b><b style="color:#ef4444">${fmt(dep)}</b></div>
+        </div>
+        <div style="margin-top:12px;padding:10px;background:#f0fdf4;border-radius:8px;font-size:11px;color:#065f46;text-align:center">
+          ${MONTHS[currentMonth-1]} ${currentYear} — Généré le ${new Date().toLocaleDateString('fr-FR')}
+        </div>
+      `;
+    }
+
+    function getMarginClass(pct) {
+      if (pct > 30) return 'margin-green';
+      if (pct >= 15) return 'margin-orange';
+      return 'margin-red';
+    }
+
+    function calcAll() {
+      calcSixt();
+      calcEnterprise();
+      calcMissionsKpi();
+      calcPlanningTotals();
+      calcCumulTotals();
+      renderDashboard();
+      renderChart();
+    }
+
+    // ======================================================================
+    // 16. GRAPHIQUES
+    // ======================================================================
+    function renderChart() {
+      const ctx = document.getElementById('caChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      const days = getDays(currentYear, currentMonth);
+      const labels = [];
+      const sixtData = [];
+      const entData = [];
+      for (let d = 1; d <= days; d++) {
+        const ds = `${getMois()}-${String(d).padStart(2,'0')}`;
+        labels.push(String(d));
+        const sixt = dataSixt.find(r => r.date === ds);
+        sixtData.push(sixt ? sixt.ca_jour : 0);
+        const ent = dataEnterprise.find(r => r.date === ds);
+        entData.push(ent ? ent.ca_jour : 0);
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'SIXT', data: sixtData, backgroundColor: 'rgba(249,115,22,0.6)', borderColor: '#f97316', borderWidth: 1 },
+            { label: 'ENTERPRISE', data: entData, backgroundColor: 'rgba(59,130,246,0.6)', borderColor: '#3b82f6', borderWidth: 1 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top' }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: value => fmt(value) } }
+          }
+        }
+      });
+    }
+
+    // ======================================================================
+    // 17. EXPORT EXCEL
+    // ======================================================================
+    function exportExcel() {
+      if (typeof XLSX === 'undefined') { toast('Librairie Excel non chargée', 'error'); return; }
+      toast('Génération du fichier Excel...', 'info');
+
+      const wb = XLSX.utils.book_new();
+
+      const sixtRows = dataSixt.map(r => ({
+        'Date': r.date,
+        'Préparation': r.prep || 0,
+        'Quick': r.quick_prep || 0,
+        'T1→T2': r.t1_t2 || 0,
+        'T2→T1': r.t2_t1 || 0,
+        'T2→P3': r.t2_p3 || 0,
+        'Refuel': r.refuel || 0,
+        'Check': r.check_voiture || 0,
+        'BB': r.siege_bb || 0,
+        'NS': r.ns || 0,
+        'CA': r.ca_jour || 0
+      }));
+      const ws1 = XLSX.utils.json_to_sheet(sixtRows);
+      XLSX.utils.book_append_sheet(wb, ws1, 'Suivi SIXT');
+
+      const entRows = dataEnterprise.map(r => ({
+        'Date': r.date,
+        'Préparation': r.prep || 0,
+        'Convoyage': r.convoyage || 0,
+        'NS': r.ns || 0,
+        'CA': r.ca_jour || 0
+      }));
+      const ws2 = XLSX.utils.json_to_sheet(entRows);
+      XLSX.utils.book_append_sheet(wb, ws2, 'Suivi ENTERPRISE');
+
+      const cumulRows = dataCumul.filter(r => r.nom.trim()).map(r => ({
+        'Nom': r.nom,
+        'S1': r.s1 || 0,
+        'S2': r.s2 || 0,
+        'S3': r.s3 || 0,
+        'S4': r.s4 || 0,
+        'S5': r.s5 || 0,
+        'Total Jours': r.total_mois || 0,
+        'Taux Journalier': r.taux_journalier || 0,
+        'Salaire': (r.total_mois||0) * (r.taux_journalier||0)
+      }));
+      const ws3 = XLSX.utils.json_to_sheet(cumulRows);
+      XLSX.utils.book_append_sheet(wb, ws3, 'Paie Équipe');
+
+      const fileName = `FleetPro_${getMois()}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast('Export Excel réussi !');
+    }
+
+    document.getElementById('btnExportExcel').addEventListener('click', exportExcel);
+
+    // ======================================================================
+    // 18. ALERTE BUDGET
+    // ======================================================================
+    function checkBudgetAlert() {
+      const { caTotal, dep } = calcDashboardMetrics();
+      if (caTotal > 0 && dep / caTotal > 0.65) {
+        toast('⚠️ Attention : Les charges salariales dépassent la limite de rentabilité (65% du CA).', 'warning');
+      }
+    }
+
+    // ======================================================================
+    // 19. EXPORTS IMAGE
+    // ======================================================================
+    document.getElementById('btnExportPlanning').onclick = async () => {
+      try { toast('Génération en cours...','info'); const c = await html2canvas(document.getElementById('planningExport'), {backgroundColor:'#fff', scale:2}); const l = document.createElement('a'); l.download = `planning_${getMois()}_${selectedWeek}.png`; l.href = c.toDataURL(); l.click(); toast('Planning exporté !'); } catch(e) { toast('Erreur export','error'); }
+    };
+    document.getElementById('btnExportCumul').onclick = async () => {
+      try { toast('Génération en cours...','info'); const c = await html2canvas(document.getElementById('cumulExport'), {backgroundColor:'#fff', scale:2}); const l = document.createElement('a'); l.download = `cumul_${getMois()}.png`; l.href = c.toDataURL(); l.click(); toast('Cumul exporté !'); } catch(e) { toast('Erreur export','error'); }
+    };
+    document.getElementById('btnExportDashboard').onclick = async () => {
+      try { toast('Génération du récap...','info'); const c = await html2canvas(document.getElementById('dashboardExport'), {backgroundColor:'#fff', scale:2}); const l = document.createElement('a'); l.download = `recap_${getMois()}.png`; l.href = c.toDataURL(); l.click(); toast('Récap mensuel exporté !'); } catch(e) { toast('Erreur export','error'); }
+    };
+
+    // ======================================================================
+    // 20. ÉVÉNEMENTS GLOBAUX
+    // ======================================================================
+    document.addEventListener('input', e => {
+      if (!editMode || !isAdmin) return;
+      if(e.target.matches('[data-tbl="sixt"]')) { dataSixt[e.target.dataset.i][e.target.dataset.c] = parseInt(e.target.value)||0; calcAll(); scheduleAutoSave(); }
+      if(e.target.matches('[data-tbl="ent"]')) { dataEnterprise[e.target.dataset.i][e.target.dataset.c] = parseInt(e.target.value)||0; calcAll(); scheduleAutoSave(); }
+    });
+
+    document.getElementById('btnSave').onclick = () => { clearTimeout(autoSaveTimer); saveData(false); };
+    document.getElementById('btnEditToggle').onclick = toggleEditMode;
+
+    document.getElementById('prevMonth').onclick = () => { currentMonth--; if(currentMonth<1){currentMonth=12;currentYear--;} updateMonth(); loadData(); };
+    document.getElementById('nextMonth').onclick = () => { currentMonth++; if(currentMonth>12){currentMonth=1;currentYear++;} updateMonth(); loadData(); };
+
+    document.getElementById('weekSelector').onchange = e => {
+      selectedWeek = e.target.value;
+      document.getElementById('syncWeekLabel').textContent = selectedWeek.toUpperCase();
+      ensureMinimumRows();
+      renderPlanning();
+      syncToCumul();
+    };
+
+    document.getElementById('mondayDate').onchange = e => {
+      const d = new Date(e.target.value);
+      const day = d.getDay();
+      if(day!==1) { d.setDate(d.getDate()+(day===0?-6:1-day)); e.target.value=d.toISOString().split('T')[0]; }
+      updateDates();
+      const dom = d.getDate();
+      selectedWeek = dom<=7?'s1':dom<=14?'s2':dom<=21?'s3':dom<=28?'s4':'s5';
+      document.getElementById('weekSelector').value = selectedWeek;
+      document.getElementById('syncWeekLabel').textContent = selectedWeek.toUpperCase();
+      syncToCumul();
+      renderPlanning();
+    };
+
+    // ======================================================================
+    // 21. STATUS
+    // ======================================================================
+    function updateStatus(online) {
+      isOnline = online;
+      const bar = document.getElementById('statusBar');
+      if (online) {
+        bar.className = 'status-bar status-online';
+        bar.innerHTML = '✅ Connecté à Supabase';
+      } else {
+        bar.className = 'status-bar status-offline';
+        bar.innerHTML = '⚠️ Mode hors-ligne — données non sauvegardées';
+      }
+    }
+
+    // ======================================================================
+    // 22. MOBILE SIDEBAR
+    // ======================================================================
+    document.getElementById('sidebarToggle').onclick = () => {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('open');
+    };
+    document.getElementById('sidebarOverlay').onclick = () => {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebarOverlay').classList.remove('open');
+    };
+    document.querySelectorAll('.nav-item').forEach(b => {
+      b.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          document.getElementById('sidebar').classList.remove('open');
+          document.getElementById('sidebarOverlay').classList.remove('open');
+        }
+      });
+    });
+
+    // ======================================================================
+    // 23. INITIALISATION
+    // ======================================================================
+    function initApp() {
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('mainApp').style.display = 'block';
+
+      // On configure les rôles (l'admin aura editMode = true)
+      applyRoleVisibility();
+
+      updateMonth();
+      setMondayDate(getCurrentMonday());
+      updateDates();
+
+      loadData();
+
+      window.addEventListener('online', () => { if (hasUnsavedChanges) scheduleAutoSave(); else updateStatus(true); });
+      window.addEventListener('offline', () => { updateStatus(false); toast('Mode hors-ligne — données non sauvegardées', 'warning'); });
+    }
+
+    // ======================================================================
+    // 24. DÉMARRAGE
+    // ======================================================================
+    document.getElementById('mainApp').style.display = 'none';
+
+    if (checkAuth()) {
+      isAdmin = (currentUser.role === 'admin');
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('mainApp').style.display = 'block';
+      initApp();
+    } else {
+      document.getElementById('loginOverlay').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
