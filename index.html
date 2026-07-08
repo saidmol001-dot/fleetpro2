@@ -438,21 +438,36 @@
     };
 
     // --- Fonctions des semaines du mois ---
-    function getWeeksOfMonth(year, month) {
-      const weeks = {};
-      const weekStarts = [1, 8, 15, 22, 29];
-      const daysInMonth = new Date(year, month, 0).getDate();
-      ['s1','s2','s3','s4','s5'].forEach((wk, i) => {
-        const startDay = weekStarts[i];
-        if (startDay > daysInMonth) { weeks[wk] = null; return; }
-        const d = new Date(year, month - 1, startDay);
-        const dow = d.getDay(); // 0=Dim
-        const mon = new Date(d);
-        mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-        const y = mon.getFullYear(), mo = String(mon.getMonth()+1).padStart(2,'0'), dd = String(mon.getDate()).padStart(2,'0');
-        weeks[wk] = `${y}-${mo}-${dd}`;
-      });
-      return weeks;
+ function getWeeksOfMonth(year, month) {
+
+    const weeks = {};
+
+    const firstDay = new Date(year, month - 1, 1);
+
+    const firstMonday = new Date(firstDay);
+
+    const day = firstMonday.getDay();
+
+    firstMonday.setDate(
+        firstMonday.getDate() - (day === 0 ? 6 : day - 1)
+    );
+
+    ['s1','s2','s3','s4','s5'].forEach((wk, index) => {
+
+        const monday = new Date(firstMonday);
+
+        monday.setDate(firstMonday.getDate() + index * 7);
+
+        const y = monday.getFullYear();
+        const m = String(monday.getMonth() + 1).padStart(2, '0');
+        const d = String(monday.getDate()).padStart(2, '0');
+
+        weeks[wk] = `${y}-${m}-${d}`;
+
+    });
+
+    return weeks;
+}
     }
     function getCurrentWeekOfMonth(year, month) {
       const today = new Date();
