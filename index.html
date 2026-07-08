@@ -677,25 +677,14 @@
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
       document.getElementById('planningWeekTitle').textContent = `${mon.getDate()}/${mon.getMonth()+1} - ${sun.getDate()}/${sun.getMonth()+1}`;
       // Déterminer la semaine à partir du début du mois (1er=S1, 8=S2, 15=S3, 22=S4, 29=S5)
-      const dom = mon.getDate();
-      const mom = mon.getMonth()+1;
-      const yom = mon.getFullYear();
-      // Comparer au 1er du mois courant : quelle semaine du mois contient ce lundi ?
-      let week = 's1';
-      if (mom === currentMonth && yom === currentYear) {
-        // Le lundi est dans le mois courant, déterminer S1-S5 selon le début de mois
-        const joursDepuisDebut = dom;
-        if (joursDepuisDebut <= 7) week = 's1';
-        else if (joursDepuisDebut <= 14) week = 's2';
-        else if (joursDepuisDebut <= 21) week = 's3';
-        else if (joursDepuisDebut <= 28) week = 's4';
-        else week = 's5';
-      } else {
-        // Lundi dans un autre mois — chercher la semaine correspondante
-        for (const [wk, wm] of Object.entries(weekMondays)) {
-          if (wm && wm === m) { week = wk; break; }
-        }
-      }
+     let week = 's1';
+
+for (const [wk, monday] of Object.entries(weekMondays)) {
+    if (monday === m) {
+        week = wk;
+        break;
+    }
+}
       selectedWeek = week;
       document.getElementById('weekSelector').value = week;
       document.getElementById('syncWeekLabel').textContent = week.toUpperCase();
